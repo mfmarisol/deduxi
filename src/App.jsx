@@ -230,6 +230,7 @@ export default function Deduxi() {
   const [showClave, setShowClave] = useState(false);
   const [arcaConnecting, setArcaConnecting] = useState(false);
   const [arcaConnected, setArcaConnected] = useState(false);
+  const [arcaError, setArcaError] = useState(null); // null | "cuit" | "clave"
 
   /* app */
   const [step, setStep] = useState(0);
@@ -312,14 +313,27 @@ export default function Deduxi() {
   };
   const handleArcaConnect = () => {
     if (!cuit || !claveFiscal) return;
+    setArcaError(null);
+    // Validate CUIT: must have exactly 11 digits
+    const cuitDigits = cuit.replace(/\D/g, "");
+    if (cuitDigits.length !== 11) {
+      setArcaError("cuit");
+      return;
+    }
+    // Validate clave fiscal: ARCA requires minimum 8 characters
+    if (claveFiscal.length < 8) {
+      setArcaError("clave");
+      return;
+    }
     setArcaConnecting(true);
+    // Simulate ARCA auth — in production this calls the real API
     setTimeout(() => {
       setArcaConnecting(false);
       setArcaConnected(true);
       localStorage.setItem("deduxi_cuit", cuit);
       localStorage.setItem("deduxi_arca_fetched", "1");
       setArcaFetched(true);
-    }, 2200);
+    }, 2400);
   };
   const handleUpdateClave = () => {
     if (!newClaveFiscal) return;
@@ -445,15 +459,38 @@ export default function Deduxi() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>CUIT</label>
-                  <input className="input-field" type="text" placeholder="20-12345678-9" value={cuit} onChange={e => setCuit(e.target.value)} />
+                  <label style={{ fontSize: 11, fontWeight: 700, color: arcaError === "cuit" ? "#dc2626" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>CUIT</label>
+                  <input className="input-field" type="text" placeholder="20-12345678-9" value={cuit}
+                    onChange={e => { setCuit(e.target.value); setArcaError(null); }}
+                    style={{ borderColor: arcaError === "cuit" ? "#fca5a5" : undefined, background: arcaError === "cuit" ? "#fff5f5" : undefined }} />
+                  {arcaError === "cuit" && (
+                    <p style={{ fontSize: 12, color: "#dc2626", marginTop: 6, lineHeight: 1.5 }}>
+                      ⚠️ El CUIT no tiene el formato correcto. Debe tener 11 dígitos (ej: 20-12345678-9).
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Clave Fiscal ARCA</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: arcaError === "clave" ? "#dc2626" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Clave Fiscal ARCA</label>
                   <div style={{ position: "relative" }}>
-                    <input className="input-field" type={showClave ? "text" : "password"} placeholder="Tu clave fiscal" value={claveFiscal} onChange={e => setClaveFiscal(e.target.value)} style={{ paddingRight: 54 }} />
+                    <input className="input-field" type={showClave ? "text" : "password"} placeholder="Tu clave fiscal" value={claveFiscal}
+                      onChange={e => { setClaveFiscal(e.target.value); setArcaError(null); }}
+                      style={{ paddingRight: 54, borderColor: arcaError === "clave" ? "#fca5a5" : undefined, background: arcaError === "clave" ? "#fff5f5" : undefined }} />
                     <button onClick={() => setShowClave(!showClave)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 11, fontWeight: 600, color: "#9ca3af", cursor: "pointer" }}>{showClave ? "Ocultar" : "Ver"}</button>
                   </div>
+                  {arcaError === "clave" && (
+                    <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 10, padding: "12px 14px", marginTop: 10 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>⚠️ Clave fiscal incorrecta o incompleta</p>
+                      <p style={{ fontSize: 12, color: "#b91c1c", lineHeight: 1.6, marginBottom: 10 }}>
+                        La clave fiscal de ARCA debe tener al menos 8 caracteres. Si olvidaste tu clave, podés recuperarla desde el sitio oficial de ARCA.
+                      </p>
+                      <a href="https://www.arca.gob.ar/clave-fiscal/" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#7c3aed", textDecoration: "none", background: "#faf5ff", border: "1.5px solid #ddd6fe", borderRadius: 8, padding: "7px 12px" }}>
+                        🔑 Recuperar clave fiscal en ARCA →
+                      </a>
+                      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
+                        También podés ir a una agencia AFIP con tu DNI si no tenés acceso al email registrado.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
               <button onClick={handleArcaConnect} disabled={arcaConnecting || !cuit || !claveFiscal} className="gradient-btn" style={{
@@ -461,9 +498,14 @@ export default function Deduxi() {
                 cursor: arcaConnecting || !cuit || !claveFiscal ? "not-allowed" : "pointer", opacity: !cuit || !claveFiscal ? 0.5 : 1,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}>
-                {arcaConnecting ? <><Spinner size={15} color="#fff"/> Verificando…</> : "Conectar y continuar →"}
+                {arcaConnecting ? <><Spinner size={15} color="#fff"/> Verificando con ARCA…</> : "Conectar y continuar →"}
               </button>
-              <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", marginTop: 14 }}>¿No tenés clave fiscal?{" "}<span style={{ color: "#7c3aed", cursor: "pointer" }}>Cómo obtenerla</span></p>
+              <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", marginTop: 14 }}>
+                ¿Problemas con tu clave?{" "}
+                <a href="https://www.arca.gob.ar/clave-fiscal/" target="_blank" rel="noopener noreferrer" style={{ color: "#7c3aed", textDecoration: "none", fontWeight: 600 }}>
+                  Recuperala en ARCA →
+                </a>
+              </p>
             </>) : (
               <div style={{ textAlign: "center", padding: "16px 0" }}>
                 <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg, #d1fae5, #a7f3d0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 16px" }}>✅</div>
