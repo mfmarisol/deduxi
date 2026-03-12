@@ -338,9 +338,9 @@ export default function Deduxi() {
       });
       const data = await res.json();
       if (data.ok) {
-        setCaptchaImage(data.captcha);
+        setCaptchaImage(data.captcha);   // null if no captcha
         setCaptchaSessionId(data.sessionId);
-        setArcaPhase("captcha");
+        setArcaPhase("captcha");         // same phase, but captchaImage will be null
       } else {
         setArcaErrMsg(data.msg || "No pudimos conectar con ARCA.");
         if (data.error === "cuit_no_encontrado") setArcaError("cuit");
@@ -359,7 +359,8 @@ export default function Deduxi() {
 
   /* Phase 2: submit clave + CAPTCHA solution → real ARCA login */
   const handleArcaComplete = async () => {
-    if (!claveFiscal || !captchaSolution) return;
+    // captchaSolution only required when there IS a captcha image
+    if (!claveFiscal || (captchaImage && !captchaSolution)) return;
     setArcaErrMsg("");
     setArcaPhase("verifying");
     try {
@@ -578,22 +579,22 @@ export default function Deduxi() {
                     <button onClick={() => { setArcaPhase("cuit"); setArcaErrMsg(""); setArcaError(null); }} style={{ fontSize: 12, color: "#7c3aed", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Cambiar</button>
                   </div>
 
-                  {/* CAPTCHA from real ARCA */}
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>Código de seguridad (ARCA)</label>
-                      <button onClick={handleRefreshCaptcha} style={{ fontSize: 11, color: "#7c3aed", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>🔄 Actualizar</button>
-                    </div>
-                    {captchaImage && (
+                  {/* CAPTCHA from real ARCA — only shown when ARCA requires it */}
+                  {captchaImage && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>Código de seguridad (ARCA)</label>
+                        <button onClick={handleRefreshCaptcha} style={{ fontSize: 11, color: "#7c3aed", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>🔄 Actualizar</button>
+                      </div>
                       <div style={{ background: "#f3f4f6", borderRadius: 8, padding: 8, marginBottom: 8, display: "flex", justifyContent: "center" }}>
                         <img src={captchaImage} alt="CAPTCHA de ARCA" style={{ height: 60, imageRendering: "pixelated", borderRadius: 4 }} />
                       </div>
-                    )}
-                    <input className="input-field" type="text" placeholder="Escribí los caracteres de la imagen" value={captchaSolution}
-                      onChange={e => { setCaptchaSolution(e.target.value); setArcaErrMsg(""); }}
-                      onKeyDown={e => e.key === "Enter" && handleArcaComplete()}
-                      autoComplete="off" autoCorrect="off" spellCheck={false} style={{ letterSpacing: "0.1em", fontFamily: "monospace" }} />
-                  </div>
+                      <input className="input-field" type="text" placeholder="Escribí los caracteres de la imagen" value={captchaSolution}
+                        onChange={e => { setCaptchaSolution(e.target.value); setArcaErrMsg(""); }}
+                        onKeyDown={e => e.key === "Enter" && handleArcaComplete()}
+                        autoComplete="off" autoCorrect="off" spellCheck={false} style={{ letterSpacing: "0.1em", fontFamily: "monospace" }} />
+                    </div>
+                  )}
 
                   {/* Clave fiscal */}
                   <div>
@@ -621,10 +622,10 @@ export default function Deduxi() {
                     </div>
                   )}
 
-                  <button onClick={handleArcaComplete} disabled={arcaPhase === "verifying" || !claveFiscal || !captchaSolution} className="gradient-btn" style={{
+                  <button onClick={handleArcaComplete} disabled={arcaPhase === "verifying" || !claveFiscal || (captchaImage && !captchaSolution)} className="gradient-btn" style={{
                     width: "100%", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", borderRadius: 10, padding: "12px 16px",
-                    cursor: arcaPhase === "verifying" || !claveFiscal || !captchaSolution ? "not-allowed" : "pointer",
-                    opacity: !claveFiscal || !captchaSolution ? 0.5 : 1,
+                    cursor: arcaPhase === "verifying" || !claveFiscal || (captchaImage && !captchaSolution) ? "not-allowed" : "pointer",
+                    opacity: !claveFiscal || (captchaImage && !captchaSolution) ? 0.5 : 1,
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   }}>
                     {arcaPhase === "verifying" ? <><Spinner size={15} color="#fff"/> Verificando en ARCA…</> : "Ingresar a ARCA →"}
