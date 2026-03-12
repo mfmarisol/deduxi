@@ -373,9 +373,14 @@ export default function Deduxi() {
       if (data.ok) {
         setArcaConnected(true);
         localStorage.setItem("deduxi_cuit", cuit);
-        localStorage.setItem("deduxi_arca_fetched", "1");
-        setArcaFetched(true);
         setClaveFiscal(""); // don't keep clave in memory
+        // Fetch comprobantes from ARCA portal using the authenticated session
+        if (data.arcaSessionId) {
+          fetchComprobantesFromArca(data.arcaSessionId);
+        } else {
+          setArcaFetched(true);
+          localStorage.setItem("deduxi_arca_fetched", "1");
+        }
       } else {
         if (data.error === "captcha_incorrecto") {
           if (data.captcha) setCaptchaImage(data.captcha);
@@ -395,6 +400,39 @@ export default function Deduxi() {
     } catch (e) {
       setArcaErrMsg("Error de conexión. Intentá de nuevo.");
       setArcaPhase("captcha");
+    }
+  };
+
+  /* Fetch comprobantes recibidos from ARCA portal after login */
+  const fetchComprobantesFromArca = async (arcaSessionId) => {
+    const periodo = new Date().toISOString().slice(0, 7); // "2026-03"
+    try {
+      const res = await fetch(`${API_URL}/api/arca/fetch-comprobantes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: arcaSessionId, periodo }),
+      });
+      const data = await res.json();
+      console.log("[ARCA comprobantes debug]", JSON.stringify(data).slice(0, 500));
+      if (data.ok && data.comprobantes) {
+        // Classify and add comprobantes from ARCA
+        const arcaTickets = data.comprobantes.map(c => ({
+          id: `arca-${c.nroComprobante || Math.random()}`,
+          provider: c.razonSocial || c.emisor || "Emisor ARCA",
+          amount: parseFloat(c.importeTotal || c.importe || 0),
+          date: c.fecha || new Date().toISOString().slice(0, 10),
+          type: c.tipo || "Factura",
+          source: "arca",
+          approved: null,
+          category: classifyTicket(c),
+        }));
+        setTickets(prev => [...prev.filter(t => t.source !== "arca"), ...arcaTickets]);
+      }
+    } catch (e) {
+      console.error("[ARCA comprobantes error]", e.message);
+    } finally {
+      setArcaFetched(true);
+      localStorage.setItem("deduxi_arca_fetched", "1");
     }
   };
 
