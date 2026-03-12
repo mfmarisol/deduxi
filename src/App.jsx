@@ -232,6 +232,15 @@ export default function Deduxi() {
   const [arcaConnected, setArcaConnected] = useState(false);
   const [arcaError, setArcaError] = useState(null); // null | "cuit" | "clave"
 
+  /* ARCA 3-phase connection */
+  const [arcaPhase, setArcaPhase] = useState("cuit"); // "cuit" | "captcha" | "verifying"
+  const [captchaImage, setCaptchaImage] = useState(null);
+  const [captchaSessionId, setCaptchaSessionId] = useState(null);
+  const [captchaSolution, setCaptchaSolution] = useState("");
+  const [arcaErrMsg, setArcaErrMsg] = useState("");
+
+  const API_URL = import.meta.env.VITE_API_URL || "https://deduxi-backend.onrender.com";
+
   /* app */
   const [step, setStep] = useState(0);
   const [showProfilePanel, setShowProfilePanel] = useState(false);
@@ -311,30 +320,91 @@ export default function Deduxi() {
     setLoginLoading(true); setLoginMethod("email");
     setTimeout(() => { setLoginLoading(false); setEmailSent(true); }, 1200);
   };
-  const handleArcaConnect = () => {
-    if (!cuit || !claveFiscal) return;
-    setArcaError(null);
-    // Validate CUIT: must have exactly 11 digits
+  /* Phase 1: submit CUIT → get CAPTCHA from real ARCA */
+  const handleArcaStart = async () => {
     const cuitDigits = cuit.replace(/\D/g, "");
-    if (cuitDigits.length !== 11) {
-      setArcaError("cuit");
-      return;
-    }
-    // Validate clave fiscal: ARCA requires minimum 8 characters
-    if (claveFiscal.length < 8) {
-      setArcaError("clave");
-      return;
-    }
+    if (cuitDigits.length !== 11) { setArcaError("cuit"); return; }
+    setArcaError(null);
+    setArcaErrMsg("");
     setArcaConnecting(true);
-    // Simulate ARCA auth — in production this calls the real API
-    setTimeout(() => {
+    try {
+      const res = await fetch(`${API_URL}/api/arca/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cuit }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCaptchaImage(data.captcha);
+        setCaptchaSessionId(data.sessionId);
+        setArcaPhase("captcha");
+      } else {
+        setArcaErrMsg(data.msg || "No pudimos conectar con ARCA.");
+        if (data.error === "cuit_no_encontrado") setArcaError("cuit");
+      }
+    } catch (e) {
+      setArcaErrMsg("Error de conexión. Verificá tu internet e intentá de nuevo.");
+    } finally {
       setArcaConnecting(false);
-      setArcaConnected(true);
-      localStorage.setItem("deduxi_cuit", cuit);
-      localStorage.setItem("deduxi_arca_fetched", "1");
-      setArcaFetched(true);
-    }, 2400);
+    }
   };
+
+  /* Phase 2: submit clave + CAPTCHA solution → real ARCA login */
+  const handleArcaComplete = async () => {
+    if (!claveFiscal || !captchaSolution) return;
+    setArcaErrMsg("");
+    setArcaPhase("verifying");
+    try {
+      const res = await fetch(`${API_URL}/api/arca/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: captchaSessionId, clave: claveFiscal, captchaSolution }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setArcaConnected(true);
+        localStorage.setItem("deduxi_cuit", cuit);
+        localStorage.setItem("deduxi_arca_fetched", "1");
+        setArcaFetched(true);
+        setClaveFiscal(""); // don't keep clave in memory
+      } else {
+        if (data.error === "captcha_incorrecto") {
+          if (data.captcha) setCaptchaImage(data.captcha);
+          setCaptchaSolution("");
+          setArcaErrMsg(data.msg || "Código incorrecto. Intentá de nuevo.");
+          setArcaPhase("captcha");
+        } else if (data.error === "sesion_expirada") {
+          setArcaPhase("cuit");
+          setArcaErrMsg("La sesión expiró. Ingresá tu CUIT de nuevo.");
+        } else {
+          // Wrong clave or other error
+          setArcaError("clave");
+          setArcaErrMsg(data.msg || "Clave fiscal incorrecta.");
+          setArcaPhase("captcha");
+        }
+      }
+    } catch (e) {
+      setArcaErrMsg("Error de conexión. Intentá de nuevo.");
+      setArcaPhase("captcha");
+    }
+  };
+
+  /* Refresh CAPTCHA image */
+  const handleRefreshCaptcha = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/arca/refresh-captcha`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: captchaSessionId }),
+      });
+      const data = await res.json();
+      if (data.ok && data.captcha) { setCaptchaImage(data.captcha); setCaptchaSolution(""); }
+      else { setArcaPhase("cuit"); setArcaErrMsg("La sesión expiró. Ingresá tu CUIT de nuevo."); }
+    } catch (_) {}
+  };
+
+  // Keep old name as alias for the button onClick
+  const handleArcaConnect = handleArcaStart;
   const handleUpdateClave = () => {
     if (!newClaveFiscal) return;
     setSavingClave(true);
@@ -450,62 +520,114 @@ export default function Deduxi() {
                 <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: "linear-gradient(135deg, #ede9fe, #ddd6fe)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🔗</div>
                 <div>
                   <p style={{ fontSize: 17, fontWeight: 700, color: "#111827", marginBottom: 2 }}>Conectá tu cuenta ARCA</p>
-                  <p style={{ fontSize: 12, color: "#9ca3af" }}>Solo esta vez. Después es automático.</p>
+                  <p style={{ fontSize: 12, color: "#9ca3af" }}>
+                    {arcaPhase === "cuit" ? "Ingresá tu CUIT para continuar." : arcaPhase === "captcha" ? "Completá la verificación de ARCA." : "Verificando con ARCA…"}
+                  </p>
                 </div>
               </div>
+
+              {/* Security note */}
               <div style={{ background: "#faf5ff", border: "1.5px solid #ede9fe", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 20 }}>
                 <span style={{ color: "#7c3aed", marginTop: 1, flexShrink: 0 }}><ShieldIcon /></span>
-                <p style={{ fontSize: 12, color: "#6d28d9", lineHeight: 1.6 }}>Tu clave fiscal <strong>nunca se guarda en texto plano</strong>. Se cifra con AES-256 y solo se usa para ingresar a ARCA en tu nombre.</p>
+                <p style={{ fontSize: 12, color: "#6d28d9", lineHeight: 1.6 }}>Tu clave fiscal <strong>nunca se almacena</strong>. Se usa una única vez para autenticarte en ARCA y se descarta.</p>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: arcaError === "cuit" ? "#dc2626" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>CUIT</label>
-                  <input className="input-field" type="text" placeholder="20-12345678-9" value={cuit}
-                    onChange={e => { setCuit(e.target.value); setArcaError(null); }}
-                    style={{ borderColor: arcaError === "cuit" ? "#fca5a5" : undefined, background: arcaError === "cuit" ? "#fff5f5" : undefined }} />
-                  {arcaError === "cuit" && (
-                    <p style={{ fontSize: 12, color: "#dc2626", marginTop: 6, lineHeight: 1.5 }}>
-                      ⚠️ El CUIT no tiene el formato correcto. Debe tener 11 dígitos (ej: 20-12345678-9).
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: arcaError === "clave" ? "#dc2626" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Clave Fiscal ARCA</label>
-                  <div style={{ position: "relative" }}>
-                    <input className="input-field" type={showClave ? "text" : "password"} placeholder="Tu clave fiscal" value={claveFiscal}
-                      onChange={e => { setClaveFiscal(e.target.value); setArcaError(null); }}
-                      style={{ paddingRight: 54, borderColor: arcaError === "clave" ? "#fca5a5" : undefined, background: arcaError === "clave" ? "#fff5f5" : undefined }} />
-                    <button onClick={() => setShowClave(!showClave)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 11, fontWeight: 600, color: "#9ca3af", cursor: "pointer" }}>{showClave ? "Ocultar" : "Ver"}</button>
+
+              {/* ── Phase 1: CUIT ── */}
+              {arcaPhase === "cuit" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: arcaError === "cuit" ? "#dc2626" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>CUIT</label>
+                    <input className="input-field" type="text" placeholder="20-12345678-9" value={cuit}
+                      onChange={e => { setCuit(e.target.value); setArcaError(null); setArcaErrMsg(""); }}
+                      onKeyDown={e => e.key === "Enter" && handleArcaStart()}
+                      style={{ borderColor: arcaError === "cuit" ? "#fca5a5" : undefined, background: arcaError === "cuit" ? "#fff5f5" : undefined }} />
+                    {(arcaError === "cuit" || arcaErrMsg) && (
+                      <p style={{ fontSize: 12, color: "#dc2626", marginTop: 6, lineHeight: 1.5 }}>
+                        ⚠️ {arcaErrMsg || "El CUIT debe tener 11 dígitos (ej: 20-12345678-9)."}
+                      </p>
+                    )}
                   </div>
-                  {arcaError === "clave" && (
-                    <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 10, padding: "12px 14px", marginTop: 10 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>⚠️ Clave fiscal incorrecta o incompleta</p>
-                      <p style={{ fontSize: 12, color: "#b91c1c", lineHeight: 1.6, marginBottom: 10 }}>
-                        La clave fiscal de ARCA debe tener al menos 8 caracteres. Si olvidaste tu clave, podés recuperarla desde el sitio oficial de ARCA.
-                      </p>
-                      <a href="https://www.arca.gob.ar/clave-fiscal/" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#7c3aed", textDecoration: "none", background: "#faf5ff", border: "1.5px solid #ddd6fe", borderRadius: 8, padding: "7px 12px" }}>
-                        🔑 Recuperar clave fiscal en ARCA →
-                      </a>
-                      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
-                        También podés ir a una agencia AFIP con tu DNI si no tenés acceso al email registrado.
-                      </p>
+                  <button onClick={handleArcaStart} disabled={arcaConnecting || !cuit} className="gradient-btn" style={{
+                    width: "100%", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", borderRadius: 10, padding: "12px 16px",
+                    cursor: arcaConnecting || !cuit ? "not-allowed" : "pointer", opacity: !cuit ? 0.5 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  }}>
+                    {arcaConnecting ? <><Spinner size={15} color="#fff"/> Consultando ARCA…</> : "Continuar →"}
+                  </button>
+                </div>
+              )}
+
+              {/* ── Phase 2: CAPTCHA + clave ── */}
+              {(arcaPhase === "captcha" || arcaPhase === "verifying") && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+
+                  {/* CUIT locked */}
+                  <div style={{ background: "#f8f7ff", border: "1.5px solid #ede9fe", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em" }}>CUIT</p>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", fontFamily: "monospace" }}>{cuit}</p>
+                    </div>
+                    <button onClick={() => { setArcaPhase("cuit"); setArcaErrMsg(""); setArcaError(null); }} style={{ fontSize: 12, color: "#7c3aed", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Cambiar</button>
+                  </div>
+
+                  {/* CAPTCHA from real ARCA */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>Código de seguridad (ARCA)</label>
+                      <button onClick={handleRefreshCaptcha} style={{ fontSize: 11, color: "#7c3aed", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>🔄 Actualizar</button>
+                    </div>
+                    {captchaImage && (
+                      <div style={{ background: "#f3f4f6", borderRadius: 8, padding: 8, marginBottom: 8, display: "flex", justifyContent: "center" }}>
+                        <img src={captchaImage} alt="CAPTCHA de ARCA" style={{ height: 60, imageRendering: "pixelated", borderRadius: 4 }} />
+                      </div>
+                    )}
+                    <input className="input-field" type="text" placeholder="Escribí los caracteres de la imagen" value={captchaSolution}
+                      onChange={e => { setCaptchaSolution(e.target.value); setArcaErrMsg(""); }}
+                      onKeyDown={e => e.key === "Enter" && handleArcaComplete()}
+                      autoComplete="off" autoCorrect="off" spellCheck={false} style={{ letterSpacing: "0.1em", fontFamily: "monospace" }} />
+                  </div>
+
+                  {/* Clave fiscal */}
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: arcaError === "clave" ? "#dc2626" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Clave Fiscal ARCA</label>
+                    <div style={{ position: "relative" }}>
+                      <input className="input-field" type={showClave ? "text" : "password"} placeholder="Tu clave fiscal"
+                        value={claveFiscal}
+                        onChange={e => { setClaveFiscal(e.target.value); setArcaError(null); setArcaErrMsg(""); }}
+                        onKeyDown={e => e.key === "Enter" && handleArcaComplete()}
+                        style={{ paddingRight: 54, borderColor: arcaError === "clave" ? "#fca5a5" : undefined, background: arcaError === "clave" ? "#fff5f5" : undefined }} />
+                      <button onClick={() => setShowClave(!showClave)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 11, fontWeight: 600, color: "#9ca3af", cursor: "pointer" }}>{showClave ? "Ocultar" : "Ver"}</button>
+                    </div>
+                  </div>
+
+                  {/* Error message */}
+                  {arcaErrMsg && (
+                    <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 10, padding: "12px 14px" }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: arcaError === "clave" ? 8 : 0 }}>⚠️ {arcaErrMsg}</p>
+                      {arcaError === "clave" && (
+                        <a href="https://www.arca.gob.ar/clave-fiscal/" target="_blank" rel="noopener noreferrer"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "#7c3aed", textDecoration: "none", background: "#faf5ff", border: "1.5px solid #ddd6fe", borderRadius: 7, padding: "6px 10px", marginTop: 4 }}>
+                          🔑 Recuperar clave en ARCA →
+                        </a>
+                      )}
                     </div>
                   )}
+
+                  <button onClick={handleArcaComplete} disabled={arcaPhase === "verifying" || !claveFiscal || !captchaSolution} className="gradient-btn" style={{
+                    width: "100%", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", borderRadius: 10, padding: "12px 16px",
+                    cursor: arcaPhase === "verifying" || !claveFiscal || !captchaSolution ? "not-allowed" : "pointer",
+                    opacity: !claveFiscal || !captchaSolution ? 0.5 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  }}>
+                    {arcaPhase === "verifying" ? <><Spinner size={15} color="#fff"/> Verificando en ARCA…</> : "Ingresar a ARCA →"}
+                  </button>
+
+                  <p style={{ textAlign: "center", fontSize: 11, color: "#9ca3af" }}>
+                    ¿Olvidaste tu clave?{" "}
+                    <a href="https://www.arca.gob.ar/clave-fiscal/" target="_blank" rel="noopener noreferrer" style={{ color: "#7c3aed", textDecoration: "none", fontWeight: 600 }}>Recuperala en ARCA →</a>
+                  </p>
                 </div>
-              </div>
-              <button onClick={handleArcaConnect} disabled={arcaConnecting || !cuit || !claveFiscal} className="gradient-btn" style={{
-                width: "100%", color: "#fff", fontWeight: 700, fontSize: 14, border: "none", borderRadius: 10, padding: "12px 16px",
-                cursor: arcaConnecting || !cuit || !claveFiscal ? "not-allowed" : "pointer", opacity: !cuit || !claveFiscal ? 0.5 : 1,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              }}>
-                {arcaConnecting ? <><Spinner size={15} color="#fff"/> Verificando con ARCA…</> : "Conectar y continuar →"}
-              </button>
-              <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", marginTop: 14 }}>
-                ¿Problemas con tu clave?{" "}
-                <a href="https://www.arca.gob.ar/clave-fiscal/" target="_blank" rel="noopener noreferrer" style={{ color: "#7c3aed", textDecoration: "none", fontWeight: 600 }}>
-                  Recuperala en ARCA →
-                </a>
-              </p>
+              )}
             </>) : (
               <div style={{ textAlign: "center", padding: "16px 0" }}>
                 <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg, #d1fae5, #a7f3d0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 16px" }}>✅</div>
