@@ -145,16 +145,24 @@ const FontLoader = () => (
   `}</style>
 );
 
-/* ── Data ── */
-const mockTickets = [
-  { id: 1, date: "01/03/2026", provider: "COTO CICSA",             cuit: "30-54808315-6", number: "2045-07481302", type: "Factura B", amount: 29497.39, status: "loaded",   reason: "Ya cargado en SIRADIG" },
-  { id: 2, date: "02/03/2026", provider: "BURD JULIETA TAMARA",    cuit: "27-31200456-9", number: "2311-00048917", type: "Factura B", amount: 16000.00, status: "pending",  reason: "Persona física – confirmar rubro" },
-  { id: 3, date: "05/03/2026", provider: "AUTOPISTAS URBANAS S.A.",cuit: "30-70815738-4", number: "5031-01269079", type: "Factura B", amount: 18381.81, status: "rejected", reason: "Peajes – no aplica como equipamiento" },
-  { id: 4, date: "09/03/2026", provider: "LEVY IOSEF",             cuit: "20-18765432-1", number: "0006-00804967", type: "Factura B", amount: 13449.00, status: "pending",  reason: "Persona física – confirmar rubro" },
-  { id: 5, date: "09/03/2026", provider: "ASELLO TECH S.R.L.",     cuit: "30-71445324-7", number: "0002-00054390", type: "Factura B", amount: 14999.00, status: "approved", reason: "Empresa de tecnología – aplica" },
-  { id: 6, date: "09/03/2026", provider: "MERCADOLIBRE S.R.L.",    cuit: "30-70308853-4", number: "0037-37709171", type: "Factura B", amount: 3490.00,  status: "approved", reason: "E-commerce – aplica si fue equipamiento" },
-  { id: 7, date: "09/03/2026", provider: "PAIK MATEO PABLO",       cuit: "20-29876543-8", number: "0010-00015601", type: "Factura B", amount: 39597.00, status: "pending",  reason: "Persona física – confirmar rubro" },
-];
+/* ── AI ticket classifier (simulated) ── */
+const classifyTicket = (t) => {
+  const name = (t.provider || "").toLowerCase();
+  if (/coto|carrefour|walmart|vea |disco |jumbo|superm|almacen|diarco|makro/.test(name))
+    return { status: "rejected", reason: "Supermercado – alimentos y consumo cotidiano no aplican como equipamiento laboral" };
+  if (/autopista|peaje|urbanas|cablevision|edenor|metrogas|fibertel|telecom|edesur|gas ban/.test(name))
+    return { status: "rejected", reason: "Servicio domiciliario o peaje – no aplica como equipamiento de trabajo" };
+  if (/tech|software|digital|sistemas|inform[aá]tic|computo|developer|studio|design|media|it s\.r|cloud|data|code|web/.test(name))
+    return { status: "approved", reason: "Empresa tech/digital – aplica como equipamiento o herramienta de trabajo" };
+  if (/mercadolibre|amazon|linio|tienda oficial/.test(name))
+    return { status: "pending", reason: "Marketplace – el resultado depende del producto comprado (equipamiento sí, alimentos no)" };
+  if (/s\.r\.l\.|srl|s\.a\.|s\.a |sociedad|corp|ltda|s\.a$/.test(name))
+    return { status: "approved", reason: "Persona jurídica – posiblemente aplica; confirmar rubro con contador" };
+  const words = name.trim().split(/\s+/);
+  if (words.length <= 3)
+    return { status: "pending", reason: "Persona física – confirmar si el rubro encuadra en SIRADIG (art. 82 inc. h)" };
+  return { status: "pending", reason: "A confirmar – verificar categoría del proveedor en ARCA" };
+};
 
 const steps = ["Inicio", "Mis Tickets", "Análisis IA", "Presentar en ARCA"];
 const statusConfig = {
@@ -245,9 +253,11 @@ export default function Deduxi() {
   const [ticketActions, setTicketActions] = useState({});
   const [ticketEdits, setTicketEdits] = useState({});
   const [editingTicketId, setEditingTicketId] = useState(null);
+  const [tickets, setTickets] = useState([]);         // user's real tickets (starts empty)
+  const [arcaFetched, setArcaFetched] = useState(false); // whether ARCA fetch simulated
   const [addedTickets, setAddedTickets] = useState([]);
   const [showAddTicket, setShowAddTicket] = useState(false);
-  const [newTicketForm, setNewTicketForm] = useState({ provider: "", date: "", amount: "", number: "", type: "Factura B" });
+  const [newTicketForm, setNewTicketForm] = useState({ provider: "", cuitProv: "", date: "", amount: "", number: "", type: "Factura B" });
   const [rrhhEmail, setRrhhEmail] = useState("");
   const [rrhhSaved, setRrhhSaved] = useState(false);
   const [savingRrhh, setSavingRrhh] = useState(false);
@@ -264,16 +274,26 @@ export default function Deduxi() {
   useEffect(() => {
     const saved = localStorage.getItem("deduxi_screen");
     if (saved === "app" || saved === "connect-arca") setScreen(saved);
+    const savedCuit = localStorage.getItem("deduxi_cuit");
+    if (savedCuit) setCuit(savedCuit);
+    const savedTickets = localStorage.getItem("deduxi_tickets");
+    if (savedTickets) { try { const t = JSON.parse(savedTickets); if (Array.isArray(t)) { setTickets(t); if (t.length > 0) setArcaFetched(true); } } catch(e) {} }
+    const savedArcaFetched = localStorage.getItem("deduxi_arca_fetched");
+    if (savedArcaFetched === "1") setArcaFetched(true);
   }, []);
   useEffect(() => {
     localStorage.setItem("deduxi_screen", screen);
   }, [screen]);
+  useEffect(() => {
+    localStorage.setItem("deduxi_tickets", JSON.stringify(tickets));
+  }, [tickets]);
 
   const TAX_RATE = 0.27;
-  const totalApproved = mockTickets.filter(t => t.status === "approved" || t.status === "loaded").reduce((a, b) => a + b.amount, 0);
-  const totalRejected = mockTickets.filter(t => t.status === "rejected").reduce((a, b) => a + b.amount, 0);
-  const totalPending  = mockTickets.filter(t => t.status === "pending").reduce((a, b) => a + b.amount, 0);
+  const totalApproved = tickets.filter(t => t.status === "approved" || t.status === "loaded").reduce((a, b) => a + b.amount, 0);
+  const totalRejected = tickets.filter(t => t.status === "rejected").reduce((a, b) => a + b.amount, 0);
+  const totalPending  = tickets.filter(t => t.status === "pending").reduce((a, b) => a + b.amount, 0);
   const monthlySaving = Math.round(totalApproved * TAX_RATE);
+  const resolvedCount = tickets.filter(t => t.status === "approved" || t.status === "loaded" || t.status === "rejected").length;
 
   const cardStyle = {
     background: "#fff", border: "1.5px solid #f1f0ff", borderRadius: 16,
@@ -293,7 +313,13 @@ export default function Deduxi() {
   const handleArcaConnect = () => {
     if (!cuit || !claveFiscal) return;
     setArcaConnecting(true);
-    setTimeout(() => { setArcaConnecting(false); setArcaConnected(true); }, 2200);
+    setTimeout(() => {
+      setArcaConnecting(false);
+      setArcaConnected(true);
+      localStorage.setItem("deduxi_cuit", cuit);
+      localStorage.setItem("deduxi_arca_fetched", "1");
+      setArcaFetched(true);
+    }, 2200);
   };
   const handleUpdateClave = () => {
     if (!newClaveFiscal) return;
@@ -540,9 +566,9 @@ export default function Deduxi() {
               <div className="stats-grid">
                 {[
                   { label: "Período", value: "Marzo 2026", icon: "📅" },
-                  { label: "Tickets", value: "7", icon: "🧾" },
-                  { label: "Deducción", value: fmt(totalApproved), icon: "✅" },
-                  { label: "A confirmar", value: fmt(totalPending), icon: "⏳" },
+                  { label: "Tickets cargados", value: tickets.length.toString(), icon: "🧾" },
+                  { label: "Deducción aprobada", value: tickets.length > 0 ? fmt(totalApproved) : "—", icon: "✅" },
+                  { label: "A confirmar", value: tickets.length > 0 ? fmt(totalPending) : "—", icon: "⏳" },
                 ].map((s, i) => (
                   <div key={i} style={{ ...cardStyle, padding: "14px 16px" }}>
                     <span style={{ fontSize: 20 }}>{s.icon}</span>
@@ -552,34 +578,44 @@ export default function Deduxi() {
                 ))}
               </div>
 
-              {/* Progress bar */}
-              <div style={{ ...cardStyle, marginBottom: 20 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Progreso del mes</span>
-                  <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>4 de 7 resueltos</span>
+              {/* Progress bar / empty state */}
+              {tickets.length === 0 ? (
+                <div style={{ ...cardStyle, marginBottom: 20, textAlign: "center", padding: "28px 20px" }}>
+                  <div style={{ fontSize: 40, marginBottom: 10 }}>🧾</div>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 6 }}>Todavía no cargaste tickets para Marzo 2026</p>
+                  <p style={{ fontSize: 13, color: "#9ca3af", lineHeight: 1.6 }}>Andá a <strong style={{ color: "#7c3aed" }}>Mis Tickets</strong> para cargar tus comprobantes físicos y analizarlos con IA.</p>
                 </div>
-                <div style={{ height: 8, background: "#f3f4f6", borderRadius: 99, overflow: "hidden", display: "flex", gap: 2 }}>
-                  <div style={{ background: "#10b981", width: "42%", borderRadius: 99 }}/>
-                  <div style={{ background: "#ef4444", width: "14%", borderRadius: 99 }}/>
-                  <div style={{ background: "#f59e0b", width: "44%", borderRadius: 99 }}/>
+              ) : (
+                <div style={{ ...cardStyle, marginBottom: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Progreso del mes</span>
+                    <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>{resolvedCount} de {tickets.length} analizados</span>
+                  </div>
+                  <div style={{ height: 8, background: "#f3f4f6", borderRadius: 99, overflow: "hidden", display: "flex", gap: 2 }}>
+                    {tickets.length > 0 && <>
+                      <div style={{ background: "#10b981", width: `${(tickets.filter(t=>t.status==="approved"||t.status==="loaded").length/tickets.length*100).toFixed(0)}%`, borderRadius: 99 }}/>
+                      <div style={{ background: "#ef4444", width: `${(tickets.filter(t=>t.status==="rejected").length/tickets.length*100).toFixed(0)}%`, borderRadius: 99 }}/>
+                      <div style={{ background: "#f59e0b", width: `${(tickets.filter(t=>t.status==="pending").length/tickets.length*100).toFixed(0)}%`, borderRadius: 99 }}/>
+                    </>}
+                  </div>
+                  <div style={{ display: "flex", gap: isMobile ? 12 : 20, marginTop: 10, flexWrap: "wrap" }}>
+                    {[
+                      { color: "#10b981", label: "Aplican", value: fmt(totalApproved) },
+                      { color: "#ef4444", label: "No aplican", value: fmt(totalRejected) },
+                      { color: "#f59e0b", label: "A confirmar", value: fmt(totalPending) },
+                    ].map((r, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span className="status-dot" style={{ background: r.color }}/>
+                        <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 500 }}>{r.label} <strong style={{ color: "#374151" }}>{r.value}</strong></span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: isMobile ? 12 : 20, marginTop: 10, flexWrap: "wrap" }}>
-                  {[
-                    { color: "#10b981", label: "Aplican", value: fmt(totalApproved) },
-                    { color: "#ef4444", label: "No aplican", value: fmt(totalRejected) },
-                    { color: "#f59e0b", label: "A confirmar", value: fmt(totalPending) },
-                  ].map((r, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span className="status-dot" style={{ background: r.color }}/>
-                      <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 500 }}>{r.label} <strong style={{ color: "#374151" }}>{r.value}</strong></span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
 
               <button onClick={() => setStep(1)} className="gradient-btn" style={{
                 width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer",
-              }}>Subir tickets del mes →</button>
+              }}>{tickets.length === 0 ? "Cargar mis tickets →" : "Ver mis tickets →"}</button>
             </div>
           )}
 
@@ -608,14 +644,14 @@ export default function Deduxi() {
                   </div>
 
                   <div style={{ ...cardStyle, padding: 0, overflow: "hidden", marginBottom: 12 }}>
-                    {mockTickets.map((t, i) => {
+                    {tickets.map((t, i) => {
                       const action = ticketActions[t.id] || "keep";
                       const isRemoved = action === "remove";
                       const edit = ticketEdits[t.id] || {};
                       const isEditing = editingTicketId === t.id;
-                      const cfg = statusConfig[t.status];
+                      const cfg = statusConfig[t.status] || statusConfig["pending"];
                       return (
-                        <div key={t.id} style={{ borderBottom: i < mockTickets.length - 1 ? "1px solid #f5f3ff" : "none", opacity: isRemoved ? 0.4 : 1, transition: "opacity 0.2s", background: isRemoved ? "#fef2f2" : isEditing ? "#faf5ff" : i % 2 === 0 ? "#fff" : "#faf9ff" }}>
+                        <div key={t.id} style={{ borderBottom: i < tickets.length - 1 ? "1px solid #f5f3ff" : "none", opacity: isRemoved ? 0.4 : 1, transition: "opacity 0.2s", background: isRemoved ? "#fef2f2" : isEditing ? "#faf5ff" : i % 2 === 0 ? "#fff" : "#faf9ff" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", flexWrap: isMobile ? "wrap" : "nowrap" }}>
                             <span className="status-dot" style={{ background: cfg.dot }}/>
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -726,7 +762,7 @@ export default function Deduxi() {
                     </div>
                   )}
 
-                  <button onClick={() => { setAnalyzing(true); setTimeout(() => { setAnalyzing(false); setAnalyzed(true); setStep(2); }, 2200); }} className="gradient-btn" style={{ width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer" }}>🤖 Analizar cambios con IA →</button>
+                  <button onClick={() => { setAnalyzing(true); setTimeout(() => { setTickets(prev => prev.map(t => ({ ...t, ...classifyTicket(t) }))); setAnalyzing(false); setAnalyzed(true); setStep(2); }, 2200); }} className="gradient-btn" style={{ width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer" }}>🤖 Analizar cambios con IA →</button>
                   {analyzing && (
                     <div style={{ background: "#faf5ff", border: "1.5px solid #ede9fe", borderRadius: 12, padding: "20px", textAlign: "center", marginTop: 12 }}>
                       <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 10 }}>
@@ -739,56 +775,151 @@ export default function Deduxi() {
               );
             }
 
-            // ── MODO NORMAL: upload ──
+            // ── MODO NORMAL: mis tickets ──
+            const handleAddTicket = () => {
+              const f = newTicketForm;
+              if (!f.provider || !f.amount) return;
+              const newT = {
+                id: Date.now(),
+                date: f.date || new Date().toLocaleDateString("es-AR"),
+                provider: f.provider.toUpperCase(),
+                cuit: f.cuitProv || "—",
+                number: f.number || "—",
+                type: f.type,
+                amount: parseFloat(f.amount),
+                status: "pending",
+                reason: "Pendiente de análisis IA",
+              };
+              setTickets(prev => [...prev, newT]);
+              setShowAddTicket(false);
+              setNewTicketForm({ provider: "", cuitProv: "", date: "", amount: "", number: "", type: "Factura B" });
+            };
+            const handleRemoveTicket = (id) => setTickets(prev => prev.filter(t => t.id !== id));
+            const handleAnalyze = () => {
+              if (tickets.length === 0) return;
+              setAnalyzing(true);
+              setTimeout(() => {
+                setTickets(prev => prev.map(t => ({ ...t, ...classifyTicket(t) })));
+                setAnalyzing(false);
+                setAnalyzed(true);
+                setStep(2);
+              }, 2200);
+            };
+
             return (
               <div>
-                <h2 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: "#111827", letterSpacing: "-0.5px", marginBottom: 4 }}>Subí tus tickets</h2>
-                <p style={{ fontSize: 14, color: "#9ca3af", marginBottom: 24 }}>Fotos, PDF o imágenes. Los analizamos automáticamente.</p>
+                <h2 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: "#111827", letterSpacing: "-0.5px", marginBottom: 4 }}>Mis Tickets — Marzo 2026</h2>
+                <p style={{ fontSize: 14, color: "#9ca3af", marginBottom: 20 }}>Cargá tus comprobantes físicos y los analizamos con IA.</p>
 
-                {!uploaded ? (
-                  <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); setUploaded(true); }} onClick={() => setUploaded(true)} style={{
-                    border: `2px dashed ${dragging ? "#7c3aed" : "#e5e3ff"}`, borderRadius: 16, padding: isMobile ? "36px 16px" : "48px 24px",
-                    textAlign: "center", cursor: "pointer", background: dragging ? "#faf5ff" : "#fff", transition: "all 0.2s", marginBottom: 20,
-                  }}>
-                    <div style={{ fontSize: 44, marginBottom: 14 }}>📸</div>
-                    <p style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 6 }}>Arrastrá tus tickets acá</p>
-                    <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 16 }}>o hacé clic para seleccionarlos</p>
-                    <span className="gradient-btn" style={{ display: "inline-block", color: "#fff", fontSize: 13, fontWeight: 600, padding: "8px 20px", borderRadius: 8 }}>Seleccionar archivos</span>
-                    <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 14 }}>JPG · PNG · PDF</p>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, background: "#faf5ff", border: "1px solid #ede9fe", borderRadius: 99, padding: "3px 10px" }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed" }}>Plan Básico</span>
-                      <span style={{ fontSize: 10, color: "#9ca3af" }}>· hasta 20 tickets/mes</span>
-                      <span style={{ fontSize: 10, color: "#a78bfa", cursor: "pointer", fontWeight: 600 }}>· Mejorar →</span>
+                {/* ARCA section */}
+                <div style={{ ...cardStyle, marginBottom: 16, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>🔍 Comprobantes en ARCA</span>
+                    <span className="chip" style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>Conectado</span>
+                  </div>
+                  <div style={{ background: "#f8f7ff", border: "1.5px solid #ede9fe", borderRadius: 10, padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>ℹ️</span>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#5b21b6", marginBottom: 3 }}>0 comprobantes de terceros encontrados para Marzo 2026</p>
+                      <p style={{ fontSize: 11, color: "#7c3aed", lineHeight: 1.5 }}>ARCA no tiene comprobantes nuevos registrados en tu CUIT este mes. Podés cargar tus tickets físicos acá abajo.</p>
                     </div>
                   </div>
-                ) : (
-                  <div style={{ ...cardStyle, padding: 0, overflow: "hidden", marginBottom: 20 }}>
-                    <div style={{ padding: "14px 20px", borderBottom: "1.5px solid #f5f3ff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>7 archivos listos</span>
-                      <span className="chip" style={{ background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0" }}>✓ Subidos</span>
+                </div>
+
+                {/* Physical tickets */}
+                <div style={{ ...cardStyle, padding: 0, overflow: "hidden", marginBottom: 16 }}>
+                  <div style={{ padding: "12px 16px", borderBottom: "1.5px solid #f5f3ff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>🧾 Tickets físicos</span>
+                      {tickets.length > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", background: "#faf5ff", border: "1px solid #ddd6fe", borderRadius: 99, padding: "1px 8px" }}>{tickets.length}</span>}
                     </div>
-                    {mockTickets.map((t, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: i % 2 === 0 ? "#fff" : "#faf9ff", borderBottom: i < mockTickets.length - 1 ? "1px solid #f5f3ff" : "none" }}>
-                        <span style={{ fontSize: 18 }}>🧾</span>
+                    <button onClick={() => setShowAddTicket(v => !v)} className={showAddTicket ? "" : "gradient-btn"} style={{ fontSize: 12, fontWeight: 700, color: showAddTicket ? "#9ca3af" : "#fff", background: showAddTicket ? "#f3f4f6" : undefined, border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>
+                      {showAddTicket ? "✕ Cancelar" : "➕ Agregar ticket"}
+                    </button>
+                  </div>
+
+                  {/* Add ticket form */}
+                  {showAddTicket && (
+                    <div style={{ padding: "14px 16px", background: "#faf5ff", borderBottom: "1.5px solid #ede9fe" }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#5b21b6", marginBottom: 12 }}>Datos del comprobante</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div className="form-row-2">
+                          <div style={{ flex: 2 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Proveedor / Razón social *</label>
+                            <input className="input-field" placeholder="Ej: ASELLO TECH S.R.L." value={newTicketForm.provider} onChange={e => setNewTicketForm(f => ({ ...f, provider: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>CUIT proveedor</label>
+                            <input className="input-field" placeholder="30-00000000-0" value={newTicketForm.cuitProv} onChange={e => setNewTicketForm(f => ({ ...f, cuitProv: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
+                          </div>
+                        </div>
+                        <div className="form-row-3">
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Fecha</label>
+                            <input className="input-field" placeholder="DD/MM/AAAA" value={newTicketForm.date} onChange={e => setNewTicketForm(f => ({ ...f, date: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Tipo</label>
+                            <select className="input-field" value={newTicketForm.type} onChange={e => setNewTicketForm(f => ({ ...f, type: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }}>
+                              {["Factura A","Factura B","Factura C","Ticket","Recibo"].map(t => <option key={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Monto ($) *</label>
+                            <input className="input-field" type="number" placeholder="0.00" value={newTicketForm.amount} onChange={e => setNewTicketForm(f => ({ ...f, amount: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>N° comprobante (opcional)</label>
+                          <input className="input-field" placeholder="0001-00001234" value={newTicketForm.number} onChange={e => setNewTicketForm(f => ({ ...f, number: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
+                        </div>
+                        <button onClick={handleAddTicket} disabled={!newTicketForm.provider || !newTicketForm.amount} className="gradient-btn" style={{ color: "#fff", fontWeight: 700, fontSize: 13, border: "none", borderRadius: 8, padding: "10px", cursor: !newTicketForm.provider || !newTicketForm.amount ? "not-allowed" : "pointer", opacity: !newTicketForm.provider || !newTicketForm.amount ? 0.5 : 1 }}>
+                          ✓ Agregar ticket
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ticket list */}
+                  {tickets.length === 0 && !showAddTicket ? (
+                    <div style={{ padding: "24px 16px", textAlign: "center" }}>
+                      <p style={{ fontSize: 13, color: "#9ca3af" }}>Todavía no cargaste tickets. Usá el botón <strong style={{ color: "#7c3aed" }}>Agregar ticket</strong> para empezar.</p>
+                    </div>
+                  ) : (
+                    tickets.map((t, i) => (
+                      <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: i % 2 === 0 ? "#fff" : "#faf9ff", borderBottom: i < tickets.length - 1 ? "1px solid #f5f3ff" : "none" }}>
+                        <span style={{ fontSize: 16 }}>🧾</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.provider}</p>
-                          <p style={{ fontSize: 11, color: "#9ca3af" }}>{t.date} · {t.type}</p>
+                          <p style={{ fontSize: 11, color: "#9ca3af" }}>{t.date} · {t.type} · {t.cuit}</p>
                         </div>
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{fmt(t.amount)}</span>
+                        <button onClick={() => handleRemoveTicket(t.id)} style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>✕</button>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ))
+                  )}
+                </div>
 
-                {uploaded && !analyzing && !analyzed && (
-                  <button onClick={() => { setAnalyzing(true); setTimeout(() => { setAnalyzing(false); setAnalyzed(true); setStep(2); }, 2200); }} className="gradient-btn" style={{ width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer" }}>🤖 Analizar con IA →</button>
+                {/* Drag & drop area for scanning */}
+                <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); setShowAddTicket(true); }} style={{
+                  border: `2px dashed ${dragging ? "#7c3aed" : "#e5e3ff"}`, borderRadius: 12, padding: "20px 16px",
+                  textAlign: "center", cursor: "pointer", background: dragging ? "#faf5ff" : "#fafafa", transition: "all 0.2s", marginBottom: 20,
+                  }} onClick={() => setShowAddTicket(true)}>
+                  <p style={{ fontSize: 13, color: "#9ca3af" }}>📷 Arrastrá la foto de un ticket para cargarlo</p>
+                  <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 4 }}>JPG · PNG · PDF — próximamente con OCR automático</p>
+                </div>
+
+                {tickets.length > 0 && !analyzing && (
+                  <button onClick={handleAnalyze} className="gradient-btn" style={{ width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer" }}>
+                    🤖 Analizar {tickets.length} ticket{tickets.length > 1 ? "s" : ""} con IA →
+                  </button>
                 )}
                 {analyzing && (
                   <div style={{ background: "#faf5ff", border: "1.5px solid #ede9fe", borderRadius: 12, padding: "20px", textAlign: "center" }}>
                     <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 10 }}>
                       {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#7c3aed", animation: `bounce 0.8s ease-in-out infinite`, animationDelay: `${i * 0.15}s` }}/>)}
                     </div>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: "#6d28d9" }}>Analizando con IA… procesando {mockTickets.length} tickets</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: "#6d28d9" }}>Analizando con IA… procesando {tickets.length} ticket{tickets.length > 1 ? "s" : ""}…</p>
                   </div>
                 )}
               </div>
@@ -797,13 +928,22 @@ export default function Deduxi() {
 
           {/* ── STEP 2: ANÁLISIS ── */}
           {step === 2 && (() => {
+            if (!analyzed && tickets.length === 0) return (
+              <div style={{ textAlign: "center", padding: "48px 16px" }}>
+                <div style={{ fontSize: 44, marginBottom: 14 }}>🤖</div>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 8 }}>Todavía no analizaste tickets</h2>
+                <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 20, lineHeight: 1.6 }}>Primero cargá tus comprobantes en <strong style={{ color: "#7c3aed" }}>Mis Tickets</strong> y luego hacé clic en "Analizar con IA".</p>
+                <button onClick={() => setStep(1)} className="gradient-btn" style={{ color: "#fff", fontWeight: 700, fontSize: 14, border: "none", borderRadius: 10, padding: "12px 24px", cursor: "pointer" }}>Ir a Mis Tickets →</button>
+              </div>
+            );
             const statusOrder = { approved: 0, loaded: 1, pending: 2, rejected: 3 };
-            const sorted = [...mockTickets].sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+            const sorted = [...tickets].sort((a, b) => (statusOrder[a.status]??2) - (statusOrder[b.status]??2));
             const groups = [
               { key: "approved", label: "✅ Aplican como deducción", color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", tickets: sorted.filter(t => t.status === "approved" || t.status === "loaded") },
               { key: "pending",  label: "⏳ A confirmar",            color: "#d97706", bg: "#fffbeb", border: "#fde68a", tickets: sorted.filter(t => t.status === "pending") },
               { key: "rejected", label: "❌ No aplican",             color: "#dc2626", bg: "#fef2f2", border: "#fecaca", tickets: sorted.filter(t => t.status === "rejected") },
             ];
+            const analyzedTickets = tickets.filter(t => t.status !== "pending" || t.reason !== "Pendiente de análisis IA");
             const wikiItems = [
               { icon: "🖥️", title: "Equipamiento de trabajo", color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", body: "Computadoras, monitores, teclados, auriculares, sillas ergonómicas, escritorios y cualquier elemento que uses para trabajar. Aplica tanto para trabajo en oficina como home office." },
               { icon: "📱", title: "Tecnología y software", color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", body: "Celulares de uso laboral, tablets, suscripciones a software profesional (Adobe, Office, etc.), hosting, dominios. Debe poder justificarse como herramienta de trabajo." },
@@ -938,7 +1078,7 @@ export default function Deduxi() {
                 <div style={{ ...cardStyle, marginBottom: 20 }}>
                   <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>Marzo 2026</p>
                   {[
-                    { label: "Tickets deducidos", value: "4" },
+                    { label: "Tickets deducidos", value: tickets.filter(t => t.status === "approved" || t.status === "loaded").length.toString() },
                     { label: "Total deducción", value: fmt(totalApproved), bold: true, color: "#059669", size: 18 },
                     isRectificativa && { label: "Versión", value: null, chip: `Rectificativa ${rectVersion}`, chipBg: "#faf5ff", chipColor: "#7c3aed", chipBorder: "#ddd6fe" },
                     { label: "Estado", value: null, chip: arcaStatus === "pending" ? "No iniciado" : arcaStatus === "draft" ? "Borrador · No enviado" : arcaStatus === "sent" ? "Enviado" : "Corrección enviada", chipBg: cur.bg, chipColor: cur.txt, chipBorder: cur.border },
@@ -1031,7 +1171,7 @@ export default function Deduxi() {
                   </div>
                 )}
 
-                <button onClick={() => { setArcaStatus("pending"); setPresenting(false); setPresentProgress(0); }} style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: "#d1d5db", marginTop: 24, cursor: "pointer" }}>↺ Reiniciar demo</button>
+                <button onClick={() => { setArcaStatus("pending"); setPresenting(false); setPresentProgress(0); setAnalyzed(false); setTickets([]); setStep(1); }} style={{ width: "100%", background: "none", border: "none", fontSize: 11, color: "#d1d5db", marginTop: 24, cursor: "pointer" }}>↺ Reiniciar mes (borrar tickets)</button>
 
                 {showRectModal && (
                   <div style={{ position: "fixed", inset: 0, background: "rgba(15,12,41,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50, padding: 16 }} onClick={() => setShowRectModal(false)}>
@@ -1065,7 +1205,7 @@ export default function Deduxi() {
               <div style={{ background: "#f8f7ff", border: "1.5px solid #f1f0ff", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                   <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>CUIT</span>
-                  <span style={{ fontSize: 11, fontFamily: "monospace", color: "#374151", fontWeight: 600 }}>20-12345678-9</span>
+                  <span style={{ fontSize: 11, fontFamily: "monospace", color: "#374151", fontWeight: 600 }}>{cuit || "—"}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>Clave fiscal</span>
@@ -1090,7 +1230,7 @@ export default function Deduxi() {
                 </div>
               )}
               <div style={{ borderTop: "1.5px solid #f5f3ff", marginTop: 16, paddingTop: 14 }}>
-                <button onClick={() => { setShowProfilePanel(false); localStorage.removeItem("deduxi_screen"); setScreen("login"); }} style={{ width: "100%", background: "none", border: "none", fontSize: 13, color: "#9ca3af", cursor: "pointer", fontWeight: 500 }}>Cerrar sesión</button>
+                <button onClick={() => { setShowProfilePanel(false); ["deduxi_screen","deduxi_cuit","deduxi_tickets","deduxi_arca_fetched"].forEach(k => localStorage.removeItem(k)); setTickets([]); setArcaFetched(false); setScreen("login"); }} style={{ width: "100%", background: "none", border: "none", fontSize: 13, color: "#9ca3af", cursor: "pointer", fontWeight: 500 }}>Cerrar sesión</button>
               </div>
             </div>
           </div>
