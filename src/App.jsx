@@ -327,11 +327,14 @@ export default function Deduxi() {
     setArcaError(null);
     setArcaErrMsg("");
     setArcaConnecting(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
     try {
       const res = await fetch(`${API_URL}/api/arca/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cuit }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (data.ok) {
@@ -343,8 +346,13 @@ export default function Deduxi() {
         if (data.error === "cuit_no_encontrado") setArcaError("cuit");
       }
     } catch (e) {
-      setArcaErrMsg("Error de conexión. Verificá tu internet e intentá de nuevo.");
+      if (e.name === "AbortError") {
+        setArcaErrMsg("La conexión tardó demasiado. El servidor puede estar iniciando, intentá de nuevo en 30 segundos.");
+      } else {
+        setArcaErrMsg("Error de conexión. Verificá tu internet e intentá de nuevo.");
+      }
     } finally {
+      clearTimeout(timeout);
       setArcaConnecting(false);
     }
   };
@@ -552,7 +560,7 @@ export default function Deduxi() {
                     cursor: arcaConnecting || !cuit ? "not-allowed" : "pointer", opacity: !cuit ? 0.5 : 1,
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   }}>
-                    {arcaConnecting ? <><Spinner size={15} color="#fff"/> Consultando ARCA…</> : "Continuar →"}
+                    {arcaConnecting ? <><Spinner size={15} color="#fff"/> Conectando con ARCA… (puede tardar hasta 60 seg)</> : "Continuar →"}
                   </button>
                 </div>
               )}
