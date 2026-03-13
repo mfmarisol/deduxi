@@ -340,7 +340,7 @@ export default function Deduxi() {
 
   const handleGoogleLogin = () => {
     setLoginLoading(true); setLoginMethod("google");
-    setTimeout(() => { setLoginLoading(false); setScreen("connect-arca"); }, 1600);
+    setTimeout(() => { setLoginLoading(false); setCuit(""); setClaveFiscal(""); setArcaPhase("cuit"); setArcaError(null); setArcaErrMsg(""); setScreen("connect-arca"); }, 1600);
   };
   const handleEmailLogin = (e) => {
     e.preventDefault(); if (!loginEmail) return;
@@ -1539,7 +1539,7 @@ export default function Deduxi() {
                 </div>
               )}
               <div style={{ borderTop: "1.5px solid #f5f3ff", marginTop: 16, paddingTop: 14 }}>
-                <button onClick={() => { setShowProfilePanel(false); ["deduxi_screen","deduxi_cuit","deduxi_tickets","deduxi_arca_fetched"].forEach(k => localStorage.removeItem(k)); setTickets([]); setArcaFetched(false); setScreen("login"); }} style={{ width: "100%", background: "none", border: "none", fontSize: 13, color: "#9ca3af", cursor: "pointer", fontWeight: 500 }}>Cerrar sesión</button>
+                <button onClick={() => { setShowProfilePanel(false); ["deduxi_screen","deduxi_cuit","deduxi_tickets","deduxi_arca_fetched"].forEach(k => localStorage.removeItem(k)); setTickets([]); setArcaFetched(false); setCuit(""); setClaveFiscal(""); setArcaConnected(false); setArcaPhase("cuit"); setCaptchaImage(null); setCaptchaSessionId(null); setCaptchaSolution(""); setScreen("login"); }} style={{ width: "100%", background: "none", border: "none", fontSize: 13, color: "#9ca3af", cursor: "pointer", fontWeight: 500 }}>Cerrar sesión</button>
               </div>
             </div>
           </div>
