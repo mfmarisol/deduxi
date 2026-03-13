@@ -450,7 +450,7 @@ export default function Deduxi() {
         const arcaTickets = data.comprobantes.map(c => ({
           id: c.id || `arca-${Math.random().toString(36).slice(2)}`,
           provider: c.razonSocial || "Emisor ARCA",
-          amount: parseFloat((c.importeTotal || "0").toString().replace(/[^0-9.,]/g, "").replace(",", ".")) || 0,
+          amount: parseFloat((c.importeTotal || "0").toString().replace(/[^0-9.,]/g, "").replace(/\./g, "").replace(",", ".")) || 0,
           date: c.fecha || new Date().toISOString().slice(0, 10),
           type: c.tipo || "Factura",
           cuit: "",
@@ -461,10 +461,14 @@ export default function Deduxi() {
         }));
         setTickets(prev => [...prev.filter(t => t.source !== "arca"), ...arcaTickets]);
       }
-      // Store debug info if no comprobantes found
-      if (data.debug) {
+      // Store debug info always (show when no comprobantes found)
+      if (data.debug || data.debugLog) {
         if (data.shot) setArcaDebugShot(data.shot);
-        setArcaDebugInfo({ title: data.title, url: data.urlAfterNav, bodyPreview: data.pageBodyPreview, debugLog: data.debugLog });
+        setArcaDebugInfo({
+          title: data.title, url: data.urlAfterNav, bodyPreview: data.pageBodyPreview,
+          debugLog: data.debugLog, dateInputs: data.dateInputs,
+          compCount: data.comprobantes?.length || 0,
+        });
       }
     } catch (e) {
       console.error("[ARCA comprobantes error]", e.message);
