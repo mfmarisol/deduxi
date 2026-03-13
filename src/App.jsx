@@ -268,9 +268,35 @@ export default function Deduxi() {
   const [addedTickets, setAddedTickets] = useState([]);
   const [showAddTicket, setShowAddTicket] = useState(false);
   const [newTicketForm, setNewTicketForm] = useState({ provider: "", cuitProv: "", date: "", amount: "", number: "", type: "Factura B" });
+  const [ticketFile, setTicketFile] = useState(null); // attached photo/PDF for ticket
+  const [ticketFilePreview, setTicketFilePreview] = useState(null);
   const [rrhhEmail, setRrhhEmail] = useState("");
   const [rrhhSaved, setRrhhSaved] = useState(false);
   const [savingRrhh, setSavingRrhh] = useState(false);
+
+  /* Derive avatar initials from CUIT or email */
+  const getAvatarInitials = () => {
+    if (cuit) {
+      const digits = cuit.replace(/\D/g, "");
+      if (digits.length >= 3) return digits.slice(0, 2) + digits.slice(2, 3);
+      return digits.slice(0, 2) || "??";
+    }
+    if (loginEmail) {
+      const prefix = loginEmail.split("@")[0];
+      return prefix.slice(0, 2).toUpperCase();
+    }
+    return "??";
+  };
+  const getDisplayName = () => {
+    if (cuit) {
+      const d = cuit.replace(/\D/g, "");
+      if (d.length === 11) return `${d.slice(0,2)}-${d.slice(2,10)}-${d.slice(10)}`;
+      return cuit;
+    }
+    return loginEmail || "Usuario";
+  };
+  const avatarInitials = getAvatarInitials();
+  const displayName = getDisplayName();
 
   /* responsive */
   const [isMobile, setIsMobile] = useState(window.innerWidth < 700);
@@ -285,7 +311,8 @@ export default function Deduxi() {
     const saved = localStorage.getItem("deduxi_screen");
     if (saved === "app" || saved === "connect-arca") setScreen(saved);
     const savedCuit = localStorage.getItem("deduxi_cuit");
-    if (savedCuit) setCuit(savedCuit);
+    // Only restore CUIT if user was already in the app (connected), not in connect-arca
+    if (savedCuit && saved === "app") setCuit(savedCuit);
     const savedTickets = localStorage.getItem("deduxi_tickets");
     if (savedTickets) { try { const t = JSON.parse(savedTickets); if (Array.isArray(t)) { setTickets(t); if (t.length > 0) setArcaFetched(true); } } catch(e) {} }
     const savedArcaFetched = localStorage.getItem("deduxi_arca_fetched");
@@ -403,6 +430,9 @@ export default function Deduxi() {
     }
   };
 
+  const [arcaDebugShot, setArcaDebugShot] = useState(null); // debug screenshot from ARCA portal
+  const [arcaDebugInfo, setArcaDebugInfo] = useState(null);
+
   /* Fetch comprobantes recibidos from ARCA portal after login */
   const fetchComprobantesFromArca = async (arcaSessionId) => {
     const periodo = new Date().toISOString().slice(0, 7); // "2026-03"
@@ -413,20 +443,27 @@ export default function Deduxi() {
         body: JSON.stringify({ sessionId: arcaSessionId, periodo }),
       });
       const data = await res.json();
-      console.log("[ARCA comprobantes debug]", JSON.stringify(data).slice(0, 500));
-      if (data.ok && data.comprobantes) {
-        // Classify and add comprobantes from ARCA
+      console.log("[ARCA comprobantes]", JSON.stringify(data).slice(0, 800));
+      if (data.ok && data.comprobantes && data.comprobantes.length > 0) {
+        // Map ARCA comprobantes to ticket format
         const arcaTickets = data.comprobantes.map(c => ({
-          id: `arca-${c.nroComprobante || Math.random()}`,
-          provider: c.razonSocial || c.emisor || "Emisor ARCA",
-          amount: parseFloat(c.importeTotal || c.importe || 0),
+          id: c.id || `arca-${Math.random().toString(36).slice(2)}`,
+          provider: c.razonSocial || "Emisor ARCA",
+          amount: parseFloat((c.importeTotal || "0").toString().replace(/[^0-9.,]/g, "").replace(",", ".")) || 0,
           date: c.fecha || new Date().toISOString().slice(0, 10),
           type: c.tipo || "Factura",
+          cuit: "",
           source: "arca",
-          approved: null,
-          category: classifyTicket(c),
+          status: "pending",
+          reason: "Pendiente de análisis IA",
+          number: c.nroComprobante || "",
         }));
         setTickets(prev => [...prev.filter(t => t.source !== "arca"), ...arcaTickets]);
+      }
+      // Store debug info if no comprobantes found
+      if (data.debug && data.shot) {
+        setArcaDebugShot(data.shot);
+        setArcaDebugInfo({ title: data.title, url: data.urlAfterNav, bodyPreview: data.pageBodyPreview });
       }
     } catch (e) {
       console.error("[ARCA comprobantes error]", e.message);
@@ -737,8 +774,8 @@ export default function Deduxi() {
             <button onClick={() => { setShowProfilePanel(true); setEditingClave(false); setClaveSaved(false); }} style={{
               width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
               border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontWeight: 700, fontSize: 13, boxShadow: "0 2px 8px rgba(124,58,237,0.3)", flexShrink: 0,
-            }}>MP</button>
+              color: "#fff", fontWeight: 700, fontSize: 10, boxShadow: "0 2px 8px rgba(124,58,237,0.3)", flexShrink: 0,
+            }}>{avatarInitials}</button>
           </div>
         </nav>
 
@@ -1028,13 +1065,34 @@ export default function Deduxi() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>🔍 Comprobantes en ARCA</span>
                     <span className="chip" style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>Conectado</span>
                   </div>
-                  <div style={{ background: "#f8f7ff", border: "1.5px solid #ede9fe", borderRadius: 10, padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>ℹ️</span>
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: "#5b21b6", marginBottom: 3 }}>0 comprobantes de terceros encontrados para Marzo 2026</p>
-                      <p style={{ fontSize: 11, color: "#7c3aed", lineHeight: 1.5 }}>ARCA no tiene comprobantes nuevos registrados en tu CUIT este mes. Podés cargar tus tickets físicos acá abajo.</p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const arcaTickets = tickets.filter(t => t.source === "arca");
+                    if (arcaTickets.length > 0) return (
+                      <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: 10, padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 18, flexShrink: 0 }}>✅</span>
+                        <div>
+                          <p style={{ fontSize: 12, fontWeight: 600, color: "#059669", marginBottom: 3 }}>{arcaTickets.length} comprobante{arcaTickets.length > 1 ? "s" : ""} encontrado{arcaTickets.length > 1 ? "s" : ""} en ARCA para Marzo 2026</p>
+                          <p style={{ fontSize: 11, color: "#047857", lineHeight: 1.5 }}>Ya se importaron a tu lista de tickets. Analizalos con IA para ver cuáles aplican como deducción.</p>
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <div style={{ background: "#f8f7ff", border: "1.5px solid #ede9fe", borderRadius: 10, padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 18, flexShrink: 0 }}>ℹ️</span>
+                        <div>
+                          <p style={{ fontSize: 12, fontWeight: 600, color: "#5b21b6", marginBottom: 3 }}>0 comprobantes de terceros encontrados para Marzo 2026</p>
+                          <p style={{ fontSize: 11, color: "#7c3aed", lineHeight: 1.5 }}>ARCA no encontró comprobantes nuevos registrados en tu CUIT este mes. Podés cargar tus tickets físicos acá abajo.</p>
+                          {arcaDebugShot && (
+                            <details style={{ marginTop: 8 }}>
+                              <summary style={{ fontSize: 11, color: "#9ca3af", cursor: "pointer" }}>Ver captura de ARCA (debug)</summary>
+                              {arcaDebugInfo && <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>Página: {arcaDebugInfo.title} — {arcaDebugInfo.url}</p>}
+                              <img src={`data:image/png;base64,${arcaDebugShot}`} alt="ARCA screenshot" style={{ width: "100%", borderRadius: 6, marginTop: 6, border: "1px solid #e5e7eb" }} />
+                            </details>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Physical tickets */}
@@ -1084,7 +1142,22 @@ export default function Deduxi() {
                           <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>N° comprobante (opcional)</label>
                           <input className="input-field" placeholder="0001-00001234" value={newTicketForm.number} onChange={e => setNewTicketForm(f => ({ ...f, number: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
                         </div>
-                        <button onClick={handleAddTicket} disabled={!newTicketForm.provider || !newTicketForm.amount} className="gradient-btn" style={{ color: "#fff", fontWeight: 700, fontSize: 13, border: "none", borderRadius: 8, padding: "10px", cursor: !newTicketForm.provider || !newTicketForm.amount ? "not-allowed" : "pointer", opacity: !newTicketForm.provider || !newTicketForm.amount ? 0.5 : 1 }}>
+                        {/* File attachment */}
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Foto / PDF del comprobante (opcional)</label>
+                          {ticketFile ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "8px 10px" }}>
+                              {ticketFilePreview && <img src={ticketFilePreview} alt="preview" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 4 }} />}
+                              <span style={{ fontSize: 12, color: "#059669", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {ticketFile.name}</span>
+                              <button onClick={() => { setTicketFile(null); setTicketFilePreview(null); }} style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 6px", cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => document.getElementById("ticket-file-input")?.click()} style={{ width: "100%", background: "#fafafa", border: "1.5px dashed #e5e7eb", borderRadius: 8, padding: "10px", fontSize: 12, color: "#9ca3af", cursor: "pointer", fontWeight: 600 }}>
+                              📷 Adjuntar foto o PDF
+                            </button>
+                          )}
+                        </div>
+                        <button onClick={() => { handleAddTicket(); setTicketFile(null); setTicketFilePreview(null); }} disabled={!newTicketForm.provider || !newTicketForm.amount} className="gradient-btn" style={{ color: "#fff", fontWeight: 700, fontSize: 13, border: "none", borderRadius: 8, padding: "10px", cursor: !newTicketForm.provider || !newTicketForm.amount ? "not-allowed" : "pointer", opacity: !newTicketForm.provider || !newTicketForm.amount ? 0.5 : 1 }}>
                           ✓ Agregar ticket
                         </button>
                       </div>
@@ -1111,12 +1184,37 @@ export default function Deduxi() {
                   )}
                 </div>
 
-                {/* Drag & drop area for scanning */}
-                <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); setShowAddTicket(true); }} style={{
+                {/* Drag & drop + file upload area */}
+                <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => {
+                  e.preventDefault(); setDragging(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && (file.type.startsWith("image/") || file.type === "application/pdf")) {
+                    setTicketFile(file);
+                    if (file.type.startsWith("image/")) {
+                      const reader = new FileReader();
+                      reader.onload = ev => setTicketFilePreview(ev.target.result);
+                      reader.readAsDataURL(file);
+                    } else { setTicketFilePreview(null); }
+                    setShowAddTicket(true);
+                  }
+                }} style={{
                   border: `2px dashed ${dragging ? "#7c3aed" : "#e5e3ff"}`, borderRadius: 12, padding: "20px 16px",
                   textAlign: "center", cursor: "pointer", background: dragging ? "#faf5ff" : "#fafafa", transition: "all 0.2s", marginBottom: 20,
-                  }} onClick={() => setShowAddTicket(true)}>
-                  <p style={{ fontSize: 13, color: "#9ca3af" }}>📷 Arrastrá la foto de un ticket para cargarlo</p>
+                  }} onClick={() => document.getElementById("ticket-file-input")?.click()}>
+                  <input id="ticket-file-input" type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setTicketFile(file);
+                      if (file.type.startsWith("image/")) {
+                        const reader = new FileReader();
+                        reader.onload = ev => setTicketFilePreview(ev.target.result);
+                        reader.readAsDataURL(file);
+                      } else { setTicketFilePreview(null); }
+                      setShowAddTicket(true);
+                    }
+                    e.target.value = "";
+                  }} />
+                  <p style={{ fontSize: 13, color: "#9ca3af" }}>📷 Arrastrá o hacé clic para subir la foto de un ticket</p>
                   <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 4 }}>JPG · PNG · PDF — próximamente con OCR automático</p>
                 </div>
 
@@ -1406,9 +1504,9 @@ export default function Deduxi() {
           <div style={{ position: "fixed", inset: 0, background: "rgba(15,12,41,0.4)", zIndex: 50, display: "flex", justifyContent: "flex-end", alignItems: "flex-start", padding: "68px 16px 16px" }} onClick={() => setShowProfilePanel(false)}>
             <div style={{ background: "#fff", borderRadius: 18, padding: "20px", width: "100%", maxWidth: 280, boxShadow: "0 8px 48px rgba(15,12,41,0.15)", border: "1.5px solid #f1f0ff" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 16, borderBottom: "1.5px solid #f5f3ff", marginBottom: 16 }}>
-                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>MP</div>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 10, flexShrink: 0 }}>{avatarInitials}</div>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Marisol Pérez</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{displayName}</p>
                   <p style={{ fontSize: 11, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>mfmarisoll@gmail.com</p>
                 </div>
               </div>
