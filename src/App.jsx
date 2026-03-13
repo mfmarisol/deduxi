@@ -443,7 +443,8 @@ export default function Deduxi() {
         body: JSON.stringify({ sessionId: arcaSessionId, periodo }),
       });
       const data = await res.json();
-      console.log("[ARCA comprobantes]", JSON.stringify(data).slice(0, 800));
+      console.log("[ARCA comprobantes]", JSON.stringify(data).slice(0, 1500));
+      if (data.debugLog) console.log("[ARCA debug log]", data.debugLog.join("\n"));
       if (data.ok && data.comprobantes && data.comprobantes.length > 0) {
         // Map ARCA comprobantes to ticket format
         const arcaTickets = data.comprobantes.map(c => ({
@@ -461,9 +462,9 @@ export default function Deduxi() {
         setTickets(prev => [...prev.filter(t => t.source !== "arca"), ...arcaTickets]);
       }
       // Store debug info if no comprobantes found
-      if (data.debug && data.shot) {
-        setArcaDebugShot(data.shot);
-        setArcaDebugInfo({ title: data.title, url: data.urlAfterNav, bodyPreview: data.pageBodyPreview });
+      if (data.debug) {
+        if (data.shot) setArcaDebugShot(data.shot);
+        setArcaDebugInfo({ title: data.title, url: data.urlAfterNav, bodyPreview: data.pageBodyPreview, debugLog: data.debugLog });
       }
     } catch (e) {
       console.error("[ARCA comprobantes error]", e.message);
@@ -1082,11 +1083,25 @@ export default function Deduxi() {
                         <div>
                           <p style={{ fontSize: 12, fontWeight: 600, color: "#5b21b6", marginBottom: 3 }}>0 comprobantes de terceros encontrados para Marzo 2026</p>
                           <p style={{ fontSize: 11, color: "#7c3aed", lineHeight: 1.5 }}>ARCA no encontró comprobantes nuevos registrados en tu CUIT este mes. Podés cargar tus tickets físicos acá abajo.</p>
-                          {arcaDebugShot && (
+                          {(arcaDebugShot || arcaDebugInfo) && (
                             <details style={{ marginTop: 8 }}>
-                              <summary style={{ fontSize: 11, color: "#9ca3af", cursor: "pointer" }}>Ver captura de ARCA (debug)</summary>
-                              {arcaDebugInfo && <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>Página: {arcaDebugInfo.title} — {arcaDebugInfo.url}</p>}
-                              <img src={`data:image/png;base64,${arcaDebugShot}`} alt="ARCA screenshot" style={{ width: "100%", borderRadius: 6, marginTop: 6, border: "1px solid #e5e7eb" }} />
+                              <summary style={{ fontSize: 11, color: "#9ca3af", cursor: "pointer" }}>Ver detalle de exploración ARCA (debug)</summary>
+                              {arcaDebugInfo && (
+                                <div style={{ marginTop: 6, fontSize: 10, color: "#6b7280", background: "#f9fafb", borderRadius: 6, padding: 8 }}>
+                                  <p><strong>Página:</strong> {arcaDebugInfo.title}</p>
+                                  <p><strong>URL:</strong> {arcaDebugInfo.url}</p>
+                                  {arcaDebugInfo.debugLog && (
+                                    <pre style={{ fontSize: 9, color: "#9ca3af", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{arcaDebugInfo.debugLog.join("\n")}</pre>
+                                  )}
+                                  {arcaDebugInfo.bodyPreview && (
+                                    <details style={{ marginTop: 4 }}>
+                                      <summary style={{ fontSize: 9, color: "#d1d5db", cursor: "pointer" }}>Texto de la página</summary>
+                                      <pre style={{ fontSize: 9, color: "#9ca3af", marginTop: 4, whiteSpace: "pre-wrap", maxHeight: 200, overflow: "auto" }}>{arcaDebugInfo.bodyPreview}</pre>
+                                    </details>
+                                  )}
+                                </div>
+                              )}
+                              {arcaDebugShot && <img src={`data:image/png;base64,${arcaDebugShot}`} alt="ARCA screenshot" style={{ width: "100%", borderRadius: 6, marginTop: 6, border: "1px solid #e5e7eb" }} />}
                             </details>
                           )}
                         </div>
