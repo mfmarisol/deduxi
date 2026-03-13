@@ -394,20 +394,37 @@ export default function Deduxi() {
       const res = await fetch(`${API_URL}/api/arca/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: captchaSessionId, clave: claveFiscal, captchaSolution }),
+        body: JSON.stringify({ sessionId: captchaSessionId, clave: claveFiscal, captchaSolution, cuit }),
       });
       const data = await res.json();
       if (data.ok) {
         setArcaConnected(true);
         localStorage.setItem("deduxi_cuit", cuit);
         setClaveFiscal(""); // don't keep clave in memory
-        // Fetch comprobantes from ARCA portal using the authenticated session
-        if (data.arcaSessionId) {
-          fetchComprobantesFromArca(data.arcaSessionId);
-        } else {
-          setArcaFetched(true);
-          localStorage.setItem("deduxi_arca_fetched", "1");
+
+        // Comprobantes now come directly from the complete response (scraped immediately after login)
+        if (data.comprobantes && data.comprobantes.length > 0) {
+          console.log(`[ARCA] ${data.comprobantes.length} comprobantes received from login`);
+          const arcaTickets = data.comprobantes.map(c => ({
+            id: c.id || `arca-${Math.random().toString(36).slice(2)}`,
+            provider: c.razonSocial || "Emisor ARCA",
+            amount: parseFloat((c.importeTotal || "0").toString().replace(/[^0-9.,]/g, "").replace(/\./g, "").replace(",", ".")) || 0,
+            date: c.fecha || new Date().toISOString().slice(0, 10),
+            type: c.tipo || "Factura",
+            cuit: "",
+            source: "arca",
+            status: "pending",
+            reason: "Pendiente de análisis IA",
+            number: c.nroComprobante || "",
+          }));
+          setTickets(prev => [...prev.filter(t => t.source !== "arca"), ...arcaTickets]);
         }
+        if (data.compDebug) {
+          console.log("[ARCA compDebug]", data.compDebug.join("\n"));
+          setArcaDebugInfo({ debugLog: data.compDebug, compCount: data.comprobantes?.length || 0 });
+        }
+        setArcaFetched(true);
+        localStorage.setItem("deduxi_arca_fetched", "1");
       } else {
         if (data.error === "captcha_incorrecto") {
           if (data.captcha) setCaptchaImage(data.captcha);
