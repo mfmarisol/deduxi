@@ -440,7 +440,7 @@ export default function Deduxi() {
       const res = await fetch(`${API_URL}/api/arca/fetch-comprobantes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: arcaSessionId, periodo }),
+        body: JSON.stringify({ sessionId: arcaSessionId, periodo, cuit }),
       });
       const data = await res.json();
       console.log("[ARCA comprobantes]", JSON.stringify(data).slice(0, 1500));
