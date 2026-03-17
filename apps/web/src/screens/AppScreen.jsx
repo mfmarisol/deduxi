@@ -819,6 +819,22 @@ export default function AppScreen() {
                           <input className="input-field" type="number" placeholder="0.00" value={newTicketForm.amount} onChange={e => setNewTicketForm(f => ({ ...f, amount: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }} />
                         </div>
                       </div>
+                      <div className="form-row-2">
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Período desde (mes)</label>
+                          <select className="input-field" value={newTicketForm.mesDesde || ""} onChange={e => setNewTicketForm(f => ({ ...f, mesDesde: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }}>
+                            <option value="">Mismo mes</option>
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][m-1]}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>Período hasta (mes)</label>
+                          <select className="input-field" value={newTicketForm.mesHasta || ""} onChange={e => setNewTicketForm(f => ({ ...f, mesHasta: e.target.value }))} style={{ padding: "8px 10px", fontSize: 12 }}>
+                            <option value="">Mismo mes</option>
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][m-1]}</option>)}
+                          </select>
+                        </div>
+                      </div>
                       <button onClick={() => { handleAddTicket(); setTicketFile(null); setTicketFilePreview(null); }} disabled={!newTicketForm.provider || !newTicketForm.amount} className="gradient-btn" style={{ color: "#fff", fontWeight: 700, fontSize: 13, border: "none", borderRadius: 8, padding: "10px", cursor: !newTicketForm.provider || !newTicketForm.amount ? "not-allowed" : "pointer", opacity: !newTicketForm.provider || !newTicketForm.amount ? 0.5 : 1 }}>
                             ✓ Agregar comprobante
                       </button>
@@ -859,7 +875,7 @@ export default function AppScreen() {
                       <span style={{ fontSize: 16 }}>🧾</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.provider}</p>
-                        <p style={{ fontSize: 11, color: "#9ca3af" }}>{t.date} - {t.type}{t.source === "arca" ? " - ARCA" : ""}</p>
+                        <p style={{ fontSize: 11, color: "#9ca3af" }}>{t.date} - {t.type}{t.source === "arca" ? " - ARCA" : ""}{t.mesDesde ? ` (${["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][t.mesDesde-1]}${t.mesHasta && t.mesHasta !== t.mesDesde ? `-${["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][t.mesHasta-1]}` : ""})` : ""}</p>
                       </div>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{fmt(t.amount)}</span>
                       <button onClick={() => handleRemoveTicket(t.id)} aria-label={`Eliminar comprobante de ${t.provider}`} style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>✕</button>
@@ -1175,7 +1191,15 @@ export default function AppScreen() {
                     <p style={{ fontSize: isMobile ? 9 : 10, color: "#8b5cf6", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Régimen de retenciones 4ta. Categoría</p>
                     <p style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: "#111827", letterSpacing: "-0.5px" }}>F.572 Web</p>
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706", background: "rgba(217,119,6,0.1)", border: "1px solid rgba(217,119,6,0.25)", borderRadius: 99, padding: "4px 12px", letterSpacing: "0.05em", marginTop: 4 }}>BORRADOR</span>
+                  {(() => {
+                    const statusConfig = {
+                      draft: { label: "BORRADOR", color: "#d97706", bg: "rgba(217,119,6,0.1)", border: "rgba(217,119,6,0.25)" },
+                      sent: { label: "PRESENTADO", color: "#059669", bg: "rgba(5,150,105,0.1)", border: "rgba(5,150,105,0.25)" },
+                      active: { label: "VIGENTE", color: "#2563eb", bg: "rgba(37,99,235,0.1)", border: "rgba(37,99,235,0.25)" },
+                    };
+                    const s = statusConfig[arcaStatus] || statusConfig.draft;
+                    return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 99, padding: "4px 12px", letterSpacing: "0.05em", marginTop: 4 }}>{s.label}{isRectificativa ? ` (Rect. ${rectVersion})` : ""}</span>;
+                  })()}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 8 : 16, fontSize: 11, color: "#6b7280", marginTop: 8 }}>
                   <span>CUIT: <strong style={{ color: "#111827" }}>{cuit ? cuit.replace(/\D/g, "").replace(/^(\d{2})(\d{8})(\d)$/, "$1-$2-$3") : "—"}</strong></span>
@@ -1490,6 +1514,21 @@ export default function AppScreen() {
                       </div>
                     );
                   })()}
+
+                  {/* Historial de presentaciones */}
+                  {arcaStatus === "sent" && (
+                    <div style={{ ...cardStyle, marginBottom: 16, padding: "14px 18px" }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Historial de presentaciones</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10 }}>
+                        <span style={{ fontSize: 14 }}>✅</span>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 12, fontWeight: 600, color: "#059669" }}>{currentPeriodo} — Presentado</p>
+                          <p style={{ fontSize: 10, color: "#6b7280" }}>{isRectificativa ? `Rectificativa ${rectVersion}` : "Original"} — {new Date().toLocaleDateString("es-AR")}</p>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>{fmt(totalBorrador)}</span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Impact explanation — now with real calculation */}
                   <div style={{ ...cardStyle, marginBottom: 20, background: "linear-gradient(135deg, #ecfdf5, #d1fae5)", border: "1.5px solid #a7f3d0" }}>
