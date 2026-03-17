@@ -376,7 +376,7 @@ export function AppProvider({ children }) {
   const [captchaSolution, setCaptchaSolution] = useState("");
   const [arcaErrMsg, setArcaErrMsg] = useState("");
 
-  const API_URL = import.meta.env.VITE_API_URL || "https://deduxi-backend.onrender.com";
+  const API_URL = import.meta.env.VITE_API_URL || "https://deduxi-api.onrender.com";
 
   /* app */
   const [step, setStep] = useState(0);

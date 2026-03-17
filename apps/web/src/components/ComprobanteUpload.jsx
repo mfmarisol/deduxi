@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://deduxi-backend.onrender.com";
+const API_URL = import.meta.env.VITE_API_URL || "https://deduxi-api.onrender.com";
 
 /**
  * ComprobanteUpload — Drag & drop or click to upload a comprobante image/PDF.
