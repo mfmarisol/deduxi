@@ -233,8 +233,19 @@ async function postSiradigSSO(
   // Retry from blank if SPA intercepted
   if (page.url().includes("portalcf.cloud.afip.gob.ar")) {
     await page.goto("about:blank");
-    await page.setContent(
-      `<html><body><form id="f" method="POST" action="${svcUrl}"><input name="token" value="${token}"><input name="sign" value="${sign}"></form></body></html>`,
+    // Use evaluate to build the form safely (avoids HTML injection from token/sign values)
+    await page.evaluate(
+      ({ url, t, s }: { url: string; t: string; s: string }) => {
+        const f = document.createElement("form");
+        f.id = "f";
+        f.method = "POST";
+        f.action = url;
+        const i1 = document.createElement("input"); i1.name = "token"; i1.value = t;
+        const i2 = document.createElement("input"); i2.name = "sign"; i2.value = s;
+        f.appendChild(i1); f.appendChild(i2);
+        document.body.appendChild(f);
+      },
+      { url: svcUrl, t: token, s: sign },
     );
     await Promise.all([
       page.evaluate(() => (document.getElementById("f") as HTMLFormElement).submit()),

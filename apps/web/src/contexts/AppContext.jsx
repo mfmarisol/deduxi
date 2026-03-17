@@ -1012,7 +1012,8 @@ export function AppProvider({ children }) {
         setSiradigFetched(true);
 
         // ── Auto-populate Section 1: Cargas de familia ──
-        if (d.cargasFamilia && d.cargasFamilia.length > 0 && cargasFamilia.length === 0) {
+        // Use functional setState to avoid stale closure values
+        if (d.cargasFamilia && d.cargasFamilia.length > 0) {
           const imported = d.cargasFamilia.map(c => ({
             tipo: c.tipo === "conyuge" || /c[oó]nyuge|conviviente/i.test(c.tipo) ? "conyuge"
               : /incapacitad/i.test(c.tipo) ? "hijo_incapacitado" : "hijo",
@@ -1021,12 +1022,15 @@ export function AppProvider({ children }) {
             mesDesde: c.mesDesde || 1,
             mesHasta: c.mesHasta || 12,
           }));
-          setCargasFamilia(imported);
-          console.log(`[SiRADIG] Imported ${imported.length} cargas de familia`);
+          setCargasFamilia(prev => {
+            if (prev.length > 0) { console.log("[SiRADIG] Cargas already set, skipping import"); return prev; }
+            console.log(`[SiRADIG] Imported ${imported.length} cargas de familia`);
+            return imported;
+          });
         }
 
         // ── Auto-populate Section 2: Otros empleadores (pluriempleo) ──
-        if (d.otrosEmpleadores && d.otrosEmpleadores.length > 0 && pluriempleo.length === 0) {
+        if (d.otrosEmpleadores && d.otrosEmpleadores.length > 0) {
           const imported = d.otrosEmpleadores.map(e => ({
             cuitEmpleador: e.cuit || "",
             razonSocial: e.razonSocial || "",
@@ -1036,8 +1040,11 @@ export function AppProvider({ children }) {
             aporteObraSocial: e.aporteObraSocial || 0,
             aporteSindical: e.aporteSindical || 0,
           }));
-          setPluriempleo(imported);
-          console.log(`[SiRADIG] Imported ${imported.length} otros empleadores`);
+          setPluriempleo(prev => {
+            if (prev.length > 0) { console.log("[SiRADIG] Pluriempleo already set, skipping import"); return prev; }
+            console.log(`[SiRADIG] Imported ${imported.length} otros empleadores`);
+            return imported;
+          });
         }
 
         // ── Auto-populate Section 3: Deducciones ──
@@ -1072,27 +1079,30 @@ export function AppProvider({ children }) {
           }
 
           // Also populate specific fields:
-          // Alquiler
+          // Alquiler — use functional setState for freshness
           const alquilerDed = d.deducciones3.find(ded => ded.categoriaDeduxi === "alquiler");
-          if (alquilerDed && !alquilerData.activo) {
-            setAlquilerData({
-              activo: true,
-              cuitLocador: alquilerDed.cuitPrestador || "",
-              nombreLocador: alquilerDed.descripcion || "",
-              // SiRADIG stores the deductible amount (40%), we need the original
-              montoMensual: alquilerDed.montoMensual > 0
-                ? Math.round(alquilerDed.montoMensual / 0.4)
-                : Math.round(alquilerDed.montoAnual / 12 / 0.4),
-              tipoContrato: "vivienda",
-              mesDesde: alquilerDed.mesDesde || 1,
-              mesHasta: alquilerDed.mesHasta || 12,
+          if (alquilerDed) {
+            setAlquilerData(prev => {
+              if (prev.activo) { console.log("[SiRADIG] Alquiler already set, skipping import"); return prev; }
+              console.log("[SiRADIG] Imported alquiler data");
+              return {
+                activo: true,
+                cuitLocador: alquilerDed.cuitPrestador || "",
+                nombreLocador: alquilerDed.descripcion || "",
+                // SiRADIG stores the deductible amount (40%), we need the original
+                montoMensual: alquilerDed.montoMensual > 0
+                  ? Math.round(alquilerDed.montoMensual / 0.4)
+                  : Math.round(alquilerDed.montoAnual / 12 / 0.4),
+                tipoContrato: "vivienda",
+                mesDesde: alquilerDed.mesDesde || 1,
+                mesHasta: alquilerDed.mesHasta || 12,
+              };
             });
-            console.log("[SiRADIG] Imported alquiler data");
           }
         }
 
         // ── Auto-populate Section 4: Retenciones ──
-        if (d.retenciones4 && d.retenciones4.length > 0 && retenciones.length === 0) {
+        if (d.retenciones4 && d.retenciones4.length > 0) {
           const imported = d.retenciones4.map(r => ({
             tipo: mapRetencionTipo(r.categoriaDeduxi || r.tipo),
             descripcion: r.descripcion || r.tipo || "",
@@ -1100,8 +1110,11 @@ export function AppProvider({ children }) {
             monto: r.monto || 0,
             periodo: r.periodo || "",
           }));
-          setRetenciones(imported);
-          console.log(`[SiRADIG] Imported ${imported.length} retenciones`);
+          setRetenciones(prev => {
+            if (prev.length > 0) { console.log("[SiRADIG] Retenciones already set, skipping import"); return prev; }
+            console.log(`[SiRADIG] Imported ${imported.length} retenciones`);
+            return imported;
+          });
         }
 
         // Update status indicators
