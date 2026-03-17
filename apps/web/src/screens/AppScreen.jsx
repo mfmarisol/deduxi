@@ -521,6 +521,51 @@ export default function AppScreen() {
                   {casasFetched && casasWorkers.length === 0 && !casasLoading && (
                     <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", padding: "8px 0" }}>Sin registros en Casas Particulares de ARCA.</p>
                   )}
+                  {/* Manual domestic worker form */}
+                  <div style={{ marginTop: 8, borderTop: casasWorkers.length > 0 ? "1px solid #d1fae5" : "none", paddingTop: 8 }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>
+                      {casasWorkers.length > 0 ? "Agregar manualmente" : "Cargar personal doméstico"}
+                    </p>
+                    {(ctx.casasManual || []).map((w, idx) => (
+                      <div key={idx} style={{ background: "#faf5ff", border: "1px solid #ede9fe", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: "#5b21b6" }}>🏡 Personal {idx + 1}</span>
+                          <button onClick={() => ctx.setCasasManual(prev => prev.filter((_, i) => i !== idx))}
+                            style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
+                        </div>
+                        <div className="form-row-2" style={{ marginBottom: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CUIL *</label>
+                            <input className="input-field" placeholder="27-12345678-9" value={w.cuil || ""}
+                              onChange={e => ctx.setCasasManual(prev => prev.map((p, i) => i === idx ? { ...p, cuil: e.target.value } : p))}
+                              style={{ fontSize: 12, padding: "6px 10px" }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Monto mensual ($)</label>
+                            <input className="input-field" type="number" placeholder="0" value={w.montoMensual || ""}
+                              onChange={e => ctx.setCasasManual(prev => prev.map((p, i) => i === idx ? { ...p, montoMensual: e.target.value } : p))}
+                              style={{ fontSize: 12, padding: "6px 10px" }} />
+                          </div>
+                        </div>
+                        <div className="form-row-2">
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Desde</label>
+                            <select className="input-field" value={w.mesDesde || 1} onChange={e => ctx.setCasasManual(prev => prev.map((p, i) => i === idx ? { ...p, mesDesde: Number(e.target.value) } : p))} style={{ fontSize: 11, padding: "6px" }}>
+                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][m-1]}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Hasta</label>
+                            <select className="input-field" value={w.mesHasta || 12} onChange={e => ctx.setCasasManual(prev => prev.map((p, i) => i === idx ? { ...p, mesHasta: Number(e.target.value) } : p))} style={{ fontSize: 11, padding: "6px" }}>
+                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][m-1]}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={() => ctx.setCasasManual(prev => [...(prev || []), { cuil: "", montoMensual: "", mesDesde: 1, mesHasta: 12 }])}
+                      style={{ width: "100%", fontSize: 11, fontWeight: 700, color: "#7c3aed", background: "#faf5ff", border: "1.5px dashed #ddd6fe", borderRadius: 8, padding: "8px", cursor: "pointer" }}>+ Agregar personal doméstico</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1332,13 +1377,51 @@ export default function AppScreen() {
                   });
                   const sec4Total = sec4Entries.reduce((sum, [, tix]) => sum + tix.reduce((s, t) => s + t.amount, 0), 0);
 
-                  if (sec4Entries.length === 0) {
+                  if (sec4Entries.length === 0 && (!ctx.retenciones || ctx.retenciones.length === 0)) {
+                    const tiposRetencion = [
+                      { key: "imp_cheque", label: "Imp. créditos y débitos bancarios", icon: "🏧" },
+                      { key: "percep_aduana", label: "Percepciones/retenciones aduaneras", icon: "🛃" },
+                      { key: "pago_cuenta_3819", label: "Pago a cuenta RG 3819 (efectivo)", icon: "💵" },
+                      { key: "pago_cuenta_5617", label: "Pago a cuenta RG 5617/2024", icon: "💵" },
+                      { key: "autoret_5683", label: "Autorretenciones RG 5683/2025", icon: "💵" },
+                      { key: "otra", label: "Otra retención/percepción", icon: "📋" },
+                    ];
                     return (
                       <div style={{ padding: "12px 16px" }}>
-                        <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Sin retenciones/percepciones cargadas.</p>
-                        <p style={{ fontSize: 10, color: "#b0b0b0", lineHeight: 1.5 }}>
-                          Las retenciones y percepciones se pueden cargar durante todo el año fiscal. Generalmente se completan al cierre del período anual o cuando recibís los comprobantes de retención.
+                        <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>
+                          Cargá retenciones, percepciones y pagos a cuenta que no figuran en Mis Comprobantes.
                         </p>
+                        {(ctx.retenciones || []).map((r, idx) => (
+                          <div key={idx} style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb" }}>{tiposRetencion.find(t => t.key === r.tipo)?.label || r.tipo}</span>
+                              <button onClick={() => ctx.setRetenciones(prev => prev.filter((_, i) => i !== idx))}
+                                style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
+                            </div>
+                            <div className="form-row-2">
+                              <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CUIT agente</label>
+                                <input className="input-field" placeholder="30-00000000-0" value={r.cuitAgente || ""}
+                                  onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, cuitAgente: e.target.value } : p))}
+                                  style={{ fontSize: 12, padding: "6px 10px" }} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Monto ($)</label>
+                                <input className="input-field" type="number" placeholder="0" value={r.monto || ""}
+                                  onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, monto: e.target.value } : p))}
+                                  style={{ fontSize: 12, padding: "6px 10px" }} />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {tiposRetencion.map(tipo => (
+                            <button key={tipo.key} onClick={() => ctx.setRetenciones(prev => [...(prev || []), { tipo: tipo.key, cuitAgente: "", monto: "", periodo: "" }])}
+                              style={{ fontSize: 10, fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "5px 10px", cursor: "pointer" }}>
+                              {tipo.icon} {tipo.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     );
                   }

@@ -472,6 +472,13 @@ export function AppProvider({ children }) {
   const [casasLoading, setCasasLoading] = useState(false);
   const [casasFetched, setCasasFetched] = useState(false);
   const [casasDebug, setCasasDebug] = useState([]);
+  // Manual domestic workers (when not imported from ARCA)
+  const [casasManual, setCasasManual] = useState([]);
+  // Each: { cuil, montoMensual, mesDesde, mesHasta }
+
+  /* Retenciones, percepciones y pagos a cuenta (Sección 4 F.572) */
+  const [retenciones, setRetenciones] = useState([]);
+  // Each: { tipo: "imp_cheque"|"percep_aduana"|"pago_cuenta_3819"|"pago_cuenta_5617"|"autoret_5683"|"otra", descripcion, cuitAgente, monto, periodo }
 
   /* Aportes en Línea (payroll data: sueldo bruto, empleadores) */
   const [aportesEmpleador, setAportesEmpleador] = useState("");
@@ -1030,7 +1037,8 @@ export function AppProvider({ children }) {
     handleGoogleLogin, handleEmailLogin, handleArcaStart, handleArcaComplete,
     handleRefreshCaptcha, handleArcaConnect, handleUpdateClave, handlePresent, handleRectificar,
     fetchComprobantesFromArca, fetchCasasParticulares, classifyTicket,
-    casasWorkers, casasPayments, casasTotalDeducible, casasLoading, casasFetched, casasDebug,
+    casasWorkers, casasPayments, casasTotalDeducible, casasLoading, casasFetched, casasDebug, casasManual, setCasasManual,
+    retenciones, setRetenciones,
     aportesEmpleador, aportesCuitEmpleador, aportesPeriodos, aportesLoading, aportesFetched,
     cargasFamilia, setCargasFamilia,
     cargasConyuge, setCargasConyuge, cargasHijos, setCargasHijos,
