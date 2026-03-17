@@ -3,9 +3,16 @@ import type { FastifyPluginAsync } from "fastify";
 import fastifyJwt from "@fastify/jwt";
 
 const jwtPlugin: FastifyPluginAsync = async (fastify) => {
-  await fastify.register(fastifyJwt, {
-    secret: process.env.JWT_SECRET!,
-  });
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    fastify.log.warn("JWT_SECRET not set – auth routes will be unavailable");
+    fastify.decorate("authenticate", async function (_request, reply) {
+      reply.code(503).send({ error: "Auth not configured" });
+    });
+    return;
+  }
+
+  await fastify.register(fastifyJwt, { secret });
 
   fastify.decorate("authenticate", async function (request, reply) {
     try {
