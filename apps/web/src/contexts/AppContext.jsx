@@ -38,17 +38,20 @@ export const useApp = () => {
  * Se actualizan semestralmente por ARCA según inflación (art. 25 Ley 27.743).
  */
 export const topesAnuales2026 = {
-  servicio_domestico: { tope: 5151802.50, tipo: "anual", desc: "Tope = Ganancia No Imponible (GNI)" },
-  seguro_vida:        { tope: 451242.12, tipo: "anual", desc: "Tope anual actualizable" },
-  seguro_mixto:       { tope: 451242.12, tipo: "anual", desc: "Comparte tope con seguro de vida" },
-  seguro_retiro:      { tope: 451242.12, tipo: "anual", desc: "Comparte tope con seguro de vida" },
-  honorarios_medicos: { porcentaje: 0.40, desc: "40% del monto facturado" },
-  donaciones:         { porcentaje: 0.05, desc: "Hasta 5% de ganancia neta" },
-  alquiler:           { porcentaje: 0.40, desc: "40% del alquiler mensual" },
-  hipotecario:        { tope: 451242.12, tipo: "anual", desc: "Tope anual actualizable" },
-  gastos_sepelio:     { tope: 451242.12, tipo: "anual", desc: "Tope anual actualizable" },
-  vehiculo_corredores:{ porcentaje: 0.01, desc: "Hasta 1% de remuneraciones (vehículo propio)" },
-  educacion:          { tope: 451242.12, tipo: "anual", desc: "Tope anual para gastos de educación" },
+  // GNI 2026 S1 = $5,151,802.50 anual
+  servicio_domestico:   { tope: 5151802.50, tipo: "anual", desc: "Tope = Ganancia No Imponible (GNI)" },
+  seguro_vida:          { tope: 753472.14, tipo: "anual", desc: "Tope anual actualizable" },
+  seguro_mixto:         { tope: 753472.14, tipo: "anual", desc: "Comparte tope con seguro de vida" },
+  seguro_retiro:        { tope: 753472.14, tipo: "anual", desc: "Comparte tope con seguro de vida" },
+  honorarios_medicos:   { porcentaje: 0.40, porcentajeGanNeta: 0.05, desc: "40% del monto, tope 5% de ganancia neta (compartido con prepaga y donaciones)" },
+  prepaga:              { porcentajeGanNeta: 0.05, desc: "Tope 5% de ganancia neta (compartido con honorarios médicos y donaciones)" },
+  donaciones:           { porcentajeGanNeta: 0.05, desc: "Tope 5% de ganancia neta (compartido con honorarios médicos y prepaga)" },
+  alquiler:             { porcentaje: 0.40, tope: 5151802.50, tipo: "anual", desc: "40% del alquiler, tope = GNI anual" },
+  hipotecario:          { tope: 20000, tipo: "anual", desc: "Tope $20.000/año (congelado desde 2001)" },
+  gastos_sepelio:       { tope: 996.23, tipo: "anual", desc: "Tope $996,23/año (congelado)" },
+  vehiculo_corredores:  { porcentaje: 0.01, desc: "Hasta 1% de remuneraciones (vehículo propio)" },
+  educacion:            { tope: 2060721.00, tipo: "anual", desc: "40% del GNI — gastos educativos hijos hasta 24 años" },
+  indumentaria_equipamiento: { desc: "Sin tope — debe ser obligatorio para el trabajo y no reembolsado" },
 };
 
 /**
@@ -564,34 +567,48 @@ export function AppProvider({ children }) {
   }, [sueldoBruto, cuotaSindical, cargasConyuge, cargasHijos, cargasHijosIncapacitados, alquilerData, pluriempleo]);
 
   // Aplica porcentajes de deducibilidad y topes anuales según normativa vigente
+  // Ley 20.628, RG ARCA — valores 2026 S1
   const approvedTickets = tickets.filter(t => t.status === "approved" || t.status === "loaded");
   const totalApproved = (() => {
-    // Agrupar por categoría para aplicar topes anuales
     const byCategory = {};
-    let total = 0;
+    // Paso 1: Aplicar porcentaje individual (ej: honorarios médicos → 40%)
     for (const t of approvedTickets) {
       const cat = t.siradigCategory;
       const topeInfo = cat && topesAnuales2026[cat];
       let deducible = t.amount;
-      // Aplicar porcentaje (ej: honorarios médicos 40%, donaciones 5% de gan. neta)
-      if (topeInfo?.porcentaje && cat !== "donaciones") {
+      if (topeInfo?.porcentaje) {
         deducible = t.amount * topeInfo.porcentaje;
       }
       if (cat) {
         byCategory[cat] = (byCategory[cat] || 0) + deducible;
       }
-      total += deducible;
     }
-    // Aplicar topes anuales (cap mensual = tope / 12)
-    let excedente = 0;
+    // Paso 2: Aplicar topes anuales individuales (cap mensual = tope / 12)
     for (const [cat, sum] of Object.entries(byCategory)) {
       const topeInfo = topesAnuales2026[cat];
       if (topeInfo?.tope) {
         const topeMensual = topeInfo.tope / 12;
-        if (sum > topeMensual) excedente += sum - topeMensual;
+        byCategory[cat] = Math.min(sum, topeMensual);
       }
     }
-    return Math.max(0, total - excedente);
+    // Paso 3: Tope compartido del 5% ganancia neta para honorarios_medicos + prepaga + donaciones
+    // Estas 3 categorías compiten por el mismo 5% de la ganancia neta
+    const categs5pct = ["honorarios_medicos", "prepaga", "donaciones"];
+    const sum5pct = categs5pct.reduce((acc, c) => acc + (byCategory[c] || 0), 0);
+    if (sum5pct > 0 && sueldoBruto > 0) {
+      // Ganancia neta estimada mensual: bruto - 17% aportes
+      const ganNeta = sueldoBruto * 0.83;
+      const tope5pctMensual = ganNeta * 0.05;
+      if (sum5pct > tope5pctMensual) {
+        // Reducir proporcionalmente las 3 categorías
+        const ratio = tope5pctMensual / sum5pct;
+        for (const c of categs5pct) {
+          if (byCategory[c]) byCategory[c] = byCategory[c] * ratio;
+        }
+      }
+    }
+    // Paso 4: Sumar todo
+    return Math.max(0, Object.values(byCategory).reduce((a, b) => a + b, 0));
   })();
   const totalRejected = tickets.filter(t => t.status === "rejected").reduce((a, b) => a + b.amount, 0);
   const totalPending  = tickets.filter(t => t.status === "pending").reduce((a, b) => a + b.amount, 0);
@@ -600,8 +617,10 @@ export function AppProvider({ children }) {
   // Cargas de familia — deducción mensual
   const cargasFamiliaMensual = (cargasConyuge ? cargasFamiliaMontos2026.conyuge.mensual : 0) + (cargasHijos * cargasFamiliaMontos2026.hijo.mensual) + (cargasHijosIncapacitados * cargasFamiliaMontos2026.hijo_incapacitado.mensual);
 
-  // Alquiler — deducción mensual (40% del monto, con tope)
-  const alquilerDeduccionMensual = alquilerData.activo ? Math.round(alquilerData.montoMensual * 0.40) : 0;
+  // Alquiler — deducción mensual (40% del monto, tope = GNI anual / 12)
+  const alquilerTopeAnual = topesAnuales2026.alquiler.tope;
+  const alquilerTopeMensual = alquilerTopeAnual / 12;
+  const alquilerDeduccionMensual = alquilerData.activo ? Math.min(Math.round(alquilerData.montoMensual * 0.40), alquilerTopeMensual) : 0;
 
   // Total de deducciones mensuales (comprobantes + cargas familia + cuota sindical + alquiler + casas particulares)
   const casasMensualCalc = casasTotalDeducible || 0;
