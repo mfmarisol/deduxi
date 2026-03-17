@@ -4,15 +4,8 @@ services:
     runtime: node
     region: oregon
     plan: free
-    buildCommand: |
-      corepack enable &&
-      corepack prepare pnpm@9.15.0 --activate &&
-      pnpm install --frozen-lockfile &&
-      npx playwright install --with-deps chromium &&
-      pnpm run build --filter=@deduxi/api...
+    buildCommand: chmod +x scripts/render-build.sh && ./scripts/render-build.sh
     startCommand: node apps/api/dist/server.js
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/.cache/ms-playwright
