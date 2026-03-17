@@ -121,17 +121,7 @@ export default function AppScreen() {
           const setOpenSection = (key) => ctx.setOpenDatosSection(openSection === key ? null : key);
           return (
           <div>
-            {/* Cutoff — compact, only when urgent */}
-            {cutoff.pastCutoff && !cutoffDismissed ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 14, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#92400e", fontWeight: 500 }}>
-                <span>⚠️</span><span style={{ flex: 1 }}>Ya pasó el día 10 — las deducciones que cargues ahora las toma tu empleador en el sueldo del mes que viene. Es normal, ARCA siempre funciona así.</span>
-                <button onClick={dismissCutoff} style={{ background: "none", border: "none", cursor: "pointer", color: "#92400e", fontSize: 14, fontWeight: 700, padding: "0 4px", flexShrink: 0 }}>✕</button>
-              </div>
-            ) : cutoff.daysLeft <= 3 && cutoff.daysLeft > 0 ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", borderRadius: 14, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#dc2626", fontWeight: 500 }}>
-                <span>🔴</span><span>Quedan {cutoff.daysLeft} día{cutoff.daysLeft > 1 ? "s" : ""} para que tu empleador tome las deducciones.</span>
-              </div>
-            ) : null}
+            {/* Cutoff banner removed — depends on each employer's payroll schedule */}
 
             {/* Hero — the ONE number that matters */}
             <div className="glow-border-pulse hero-shimmer card-enter" style={{ ...cardStyle, marginBottom: 20, padding: 0, overflow: "hidden", borderRadius: 24 }}>
@@ -920,27 +910,27 @@ export default function AppScreen() {
                     ];
                     return (
                     <div key={t.id} style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 12, padding: "13px 16px", marginBottom: 8 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <p style={{ fontSize: 13, fontWeight: 700, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.provider}</p>
                           <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>{t.date} - {t.type}</p>
+                          <p style={{ fontSize: 11, color: "#d97706", marginTop: 3 }}>💬 {t.reason}</p>
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827", flexShrink: 0 }}>{fmt(t.amount)}</span>
-                      </div>
-                      <p style={{ fontSize: 12, color: "#d97706", marginTop: 7 }}>💬 {t.reason}</p>
-                      {/* Action buttons */}
-                      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                        <button onClick={() => ctx.setConfirmingTicketId(isExpanded ? null : t.id)} style={{
-                          flex: 1, padding: "7px 0", borderRadius: 8, border: "1px solid #a7f3d0", background: isExpanded ? "#059669" : "#ecfdf5",
-                          color: isExpanded ? "#fff" : "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all 0.2s",
-                        }}>✓ Es deducible</button>
-                        <button onClick={() => {
-                          setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "rejected", reason: "Marcado como no deducible" } : tk));
-                          ctx.setConfirmingTicketId(null);
-                        }} style={{
-                          flex: 1, padding: "7px 0", borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2",
-                          color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all 0.2s",
-                        }}>✗ No aplica</button>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827", flexShrink: 0, marginRight: 4 }}>{fmt(t.amount)}</span>
+                        {/* Compact action buttons */}
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          <button onClick={() => ctx.setConfirmingTicketId(isExpanded ? null : t.id)} title="Es deducible" style={{
+                            width: 32, height: 32, borderRadius: 8, border: "1px solid #a7f3d0", background: isExpanded ? "#059669" : "#ecfdf5",
+                            color: isExpanded ? "#fff" : "#059669", fontSize: 14, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>✓</button>
+                          <button onClick={() => {
+                            setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "rejected", reason: "Marcado como no deducible" } : tk));
+                            ctx.setConfirmingTicketId(null);
+                          }} title="No aplica" style={{
+                            width: 32, height: 32, borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2",
+                            color: "#dc2626", fontSize: 14, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>✗</button>
+                        </div>
                       </div>
                       {/* Category selector */}
                       <div style={{ marginTop: isExpanded ? 8 : 0, display: "flex", flexWrap: "wrap", gap: 4, maxHeight: isExpanded ? 200 : 0, opacity: isExpanded ? 1 : 0, overflow: "hidden", transition: "all 0.2s ease-out" }}>

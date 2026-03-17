@@ -16,7 +16,7 @@ export default function ConnectArcaScreen() {
 
   return (
     <div className="app-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-      <div className="login-container" style={{ width: "100%", maxWidth: isMobile ? 400 : 460 }}>
+      <div className="login-container" style={{ width: "100%", maxWidth: isMobile ? 400 : 520 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: isMobile ? 22 : 28 }}>
           <LogoBrand size={isMobile ? 30 : 38} />
           <span style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, letterSpacing: "-0.5px" }}><span className="ai-gradient-text">DEDUXI</span></span>
@@ -101,7 +101,7 @@ export default function ConnectArcaScreen() {
                       value={claveFiscal}
                       onChange={e => { setClaveFiscal(e.target.value); setArcaError(null); setArcaErrMsg(""); }}
                       onKeyDown={e => e.key === "Enter" && handleArcaComplete()}
-                      style={{ paddingRight: 54, borderColor: arcaError === "clave" ? "#fca5a5" : undefined, background: arcaError === "clave" ? "#fff5f5" : undefined }} />
+                      style={{ paddingRight: 54, fontSize: isMobile ? 14 : 16, padding: isMobile ? "12px 54px 12px 14px" : "14px 54px 14px 16px", borderColor: arcaError === "clave" ? "#fca5a5" : undefined, background: arcaError === "clave" ? "#fff5f5" : undefined }} />
                     <button onClick={() => setShowClave(!showClave)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 11, fontWeight: 600, color: "#9ca3af", cursor: "pointer" }}>{showClave ? "Ocultar" : "Ver"}</button>
                   </div>
                 </div>
