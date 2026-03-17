@@ -165,52 +165,26 @@ export default function ComprobanteUpload({ onResult, userCuit, compact = false 
     );
   }
 
-  // ── Upload / loading state ──
+  // ── Disabled state — Próximamente ──
   return (
     <div
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onClick={() => fileRef.current?.click()}
       style={{
-        border: `2px dashed ${dragging ? "#7c3aed" : "#ddd6fe"}`,
+        border: "2px dashed #e5e7eb",
         borderRadius: 10,
         padding: compact ? "14px" : "20px",
         textAlign: "center",
-        cursor: uploading ? "wait" : "pointer",
-        background: dragging ? "#faf5ff" : "#fefefe",
-        transition: "all 0.15s",
+        cursor: "default",
+        background: "#f9fafb",
+        opacity: 0.7,
       }}
     >
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
-        style={{ display: "none" }}
-        onChange={(e) => handleFile(e.target.files?.[0])}
-      />
-
-      {uploading ? (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          {preview && preview !== "pdf" && (
-            <img src={preview} alt="preview" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8, opacity: 0.6 }} />
-          )}
-          <div className="spinner" style={{ width: 24, height: 24, border: "3px solid #ede9fe", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-          <p style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>Leyendo comprobante...</p>
-          <p style={{ fontSize: 11, color: "#9ca3af" }}>Extrayendo datos con IA</p>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: compact ? 24 : 32 }}>📸</span>
-          <p style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-            {compact ? "Subir foto/PDF" : "Arrastra o toca para subir comprobante"}
-          </p>
-          <p style={{ fontSize: 11, color: "#9ca3af" }}>
-            JPG, PNG, WebP o PDF — max 10 MB
-          </p>
-          <span style={{ display: "inline-block", fontSize: 9, fontWeight: 700, color: "#d97706", background: "#fffbeb", border: "1px solid #fde68a", padding: "2px 10px", borderRadius: 99, letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>En pruebas</span>
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: compact ? 24 : 32, filter: "grayscale(1)" }}>📸</span>
+        <p style={{ fontSize: 13, fontWeight: 600, color: "#9ca3af" }}>
+          {compact ? "Subir foto/PDF" : "Escanear comprobante con IA"}
+        </p>
+        <span style={{ display: "inline-block", fontSize: 9, fontWeight: 700, color: "#7c3aed", background: "#faf5ff", border: "1px solid #ddd6fe", padding: "2px 10px", borderRadius: 99, letterSpacing: "0.05em", textTransform: "uppercase" }}>Próximamente</span>
+      </div>
     </div>
   );
 }
