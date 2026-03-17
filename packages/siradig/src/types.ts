@@ -44,6 +44,75 @@ export interface SiradigDeduccion {
   cuitPrestador: string;    // Provider CUIT
 }
 
+// ── SiRADIG Detail (parsed from borrador/presentación) ──────────
+
+/** Full parsed detail of a SiRADIG F.572 borrador or presentación */
+export interface SiradigDetail {
+  periodo: string;           // "03/2026"
+  estado: string;            // "Borrador", "Presentada", "Vigente"
+  tipo: string;              // "Original", "Rectificativa N°2"
+  nroTransaccion: string;
+  fechaPresentacion: string;
+
+  // Section 1: Cargas de familia
+  cargasFamilia: SiradigCargaFamilia[];
+
+  // Section 2: Ingresos de otros empleadores
+  otrosEmpleadores: SiradigOtroEmpleador[];
+
+  // Section 3: Deducciones y desgravaciones
+  deducciones3: SiradigDeduccion3[];
+
+  // Section 4: Retenciones, percepciones y pagos a cuenta
+  retenciones4: SiradigRetencion4[];
+
+  // Raw debug info
+  debug: string[];
+}
+
+export interface SiradigCargaFamilia {
+  tipo: string;              // "Cónyuge", "Hijo/a", "Hijo/a incapacitado/a"
+  cuil: string;
+  nombre: string;
+  porcentaje: number;        // 100 or 50
+  mesDesde: number;          // 1-12
+  mesHasta: number;          // 1-12
+  montoAnual: number;
+}
+
+export interface SiradigOtroEmpleador {
+  cuit: string;
+  razonSocial: string;
+  sueldoBruto: number;
+  retencionGanancias: number;
+  aporteSegSocial: number;
+  aporteObraSocial: number;
+  aporteSindical: number;
+  mesDesde: number;
+  mesHasta: number;
+}
+
+export interface SiradigDeduccion3 {
+  concepto: string;          // Category name as shown in SiRADIG
+  descripcion: string;       // Detail/provider name
+  cuitPrestador: string;
+  montoMensual: number;
+  montoAnual: number;
+  mesDesde: number;
+  mesHasta: number;
+  /** Our internal category key for mapping to frontend */
+  categoriaDeduxi: string;
+}
+
+export interface SiradigRetencion4 {
+  tipo: string;              // "Impuesto cheque", "Percepción aduana", etc.
+  cuitAgente: string;
+  descripcion: string;
+  monto: number;
+  periodo: string;           // month/year
+  categoriaDeduxi: string;
+}
+
 /** Domestic worker (empleada doméstica / personal de casas particulares) */
 export interface CasasParticularesWorker {
   cuil: string;             // Worker's CUIL

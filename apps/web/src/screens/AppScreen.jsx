@@ -29,6 +29,7 @@ export default function AppScreen() {
     handleUpdateClave, handlePresent, handleRectificar,
     classifyTicket,
     casasWorkers, casasPayments, casasTotalDeducible, casasLoading, casasFetched,
+    siradigDetail, siradigLoading, siradigFetched,
     cargasConyuge, setCargasConyuge, cargasHijos, setCargasHijos,
     cargasHijosIncapacitados, setCargasHijosIncapacitados,
     cuotaSindical, setCuotaSindical,
@@ -158,6 +159,29 @@ export default function AppScreen() {
             <button onClick={() => setStep(1)} className="gradient-btn" style={{
               width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer", marginBottom: 20,
             }}>{tickets.length === 0 ? "Importar comprobantes →" : "Ver mis comprobantes →"}</button>
+
+            {/* SiRADIG import status */}
+            {siradigLoading && (
+              <div style={{ ...cardStyle, marginBottom: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.03)" }}>
+                <Spinner size={14} color="#7c3aed" />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>Importando F.572 anterior de SiRADIG…</span>
+              </div>
+            )}
+            {siradigFetched && siradigDetail && (
+              <div style={{ ...cardStyle, marginBottom: 12, padding: "10px 14px", background: "#ecfdf5", border: "1.5px solid #a7f3d0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>📋</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>F.572 anterior importado</p>
+                    <p style={{ fontSize: 10, color: "#6b7280" }}>
+                      {siradigDetail.periodo && `Período ${siradigDetail.periodo} · `}
+                      {siradigDetail.tipo && `${siradigDetail.tipo} · `}
+                      {(siradigDetail.cargasFamilia?.length || 0) + (siradigDetail.deducciones3?.length || 0) + (siradigDetail.retenciones4?.length || 0)} items importados
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Collapsible data sections */}
             <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Datos personales</p>

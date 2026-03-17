@@ -12,7 +12,7 @@ import {
 } from "@deduxi/siradig";
 import { fetchComprobantes } from "@deduxi/siradig";
 import { refreshCaptcha } from "@deduxi/siradig";
-import { fetchSiradigPresentaciones } from "@deduxi/siradig";
+import { fetchSiradigPresentaciones, fetchSiradigDetail } from "@deduxi/siradig";
 import { fetchCasasParticulares } from "@deduxi/siradig";
 import { fetchMirequaPercepciones, filterPercepciones35 } from "@deduxi/siradig";
 import { fetchAportesEnLinea } from "@deduxi/siradig";
@@ -227,6 +227,54 @@ const arcaRoutes: FastifyPluginAsync = async (fastify) => {
       }
     },
   );
+  // POST /api/arca/fetch-siradig-detail - Fetch FULL detail of latest SiRADIG F.572
+  fastify.post<{ Body: { sessionId: string; cuit: string; periodo?: string } }>(
+    "/arca/fetch-siradig-detail",
+    async (request, reply) => {
+      const { sessionId, cuit, periodo } = request.body;
+
+      if (!isValidCuit(cuit)) {
+        return reply.code(400).send({ ok: false, error: "CUIT inválido" });
+      }
+      if (!isValidSessionId(sessionId)) {
+        return reply.code(400).send({ ok: false, error: "sessionId inválido" });
+      }
+
+      // Use a separate page to avoid disrupting the main session
+      const mainPage = getSession(sessionId, cuit);
+      if (!mainPage) {
+        return { ok: false, error: "sesion_expirada" };
+      }
+
+      const page = await createExtraPage(sessionId, cuit);
+      if (!page) {
+        return { ok: false, error: "sesion_expirada" };
+      }
+
+      try {
+        const detail = await fetchSiradigDetail(page, cuit, periodo);
+        fastify.log.info(
+          {
+            cargas: detail.cargasFamilia.length,
+            empleadores: detail.otrosEmpleadores.length,
+            deducciones: detail.deducciones3.length,
+            retenciones: detail.retenciones4.length,
+          },
+          "SiRADIG detail fetched",
+        );
+        for (const line of detail.debug) {
+          fastify.log.info({ siradigDetailDebug: line }, "siradig-detail");
+        }
+        return { ok: true, detail };
+      } catch (err) {
+        fastify.log.error(err, "arca/fetch-siradig-detail error");
+        return reply.code(500).send({ ok: false, error: safeErrorMessage(err) });
+      } finally {
+        try { await page.close(); } catch {}
+      }
+    },
+  );
+
   // POST /api/arca/fetch-casas-particulares - Fetch domestic worker data
   fastify.post<{ Body: { sessionId: string; cuit: string } }>(
     "/arca/fetch-casas-particulares",

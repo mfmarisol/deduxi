@@ -487,6 +487,12 @@ export function AppProvider({ children }) {
   const [aportesLoading, setAportesLoading] = useState(false);
   const [aportesFetched, setAportesFetched] = useState(false);
 
+  /* SiRADIG previous presentations (imported detail) */
+  const [siradigDetail, setSiradigDetail] = useState(null);
+  const [siradigLoading, setSiradigLoading] = useState(false);
+  const [siradigFetched, setSiradigFetched] = useState(false);
+  const [siradigDebug, setSiradigDebug] = useState([]);
+
   /* User name from ARCA (set after aportes fetch) */
   const [arcaUserName, setArcaUserName] = useState(localStorage.getItem("deduxi_user_name") || "");
 
@@ -810,13 +816,16 @@ export function AppProvider({ children }) {
 
         // Fetch scrapers SEQUENTIALLY to avoid race conditions
         // (both use portal API for token+sign, concurrent calls can conflict)
-        // Aportes first (most important — sueldo bruto), then casas
+        // Order: Aportes → Casas Particulares → SiRADIG Detail
         fetchAportesEnLinea(captchaSessionId)
           .catch(e => console.warn("[ARCA aportes-en-linea auto-fetch failed]", e.message))
           .finally(() => {
-            fetchCasasParticulares(captchaSessionId).catch(e =>
-              console.warn("[ARCA casas-particulares auto-fetch failed]", e.message)
-            );
+            fetchCasasParticulares(captchaSessionId)
+              .catch(e => console.warn("[ARCA casas-particulares auto-fetch failed]", e.message))
+              .finally(() => {
+                fetchSiradigDetail(captchaSessionId)
+                  .catch(e => console.warn("[ARCA siradig-detail auto-fetch failed]", e.message));
+              });
           });
       } else {
         if (data.error === "captcha_incorrecto") {
@@ -982,6 +991,150 @@ export function AppProvider({ children }) {
     }
   };
 
+  /* Fetch SiRADIG previous F.572 detail and pre-populate all sections */
+  const fetchSiradigDetail = async (arcaSessionId) => {
+    setSiradigLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/arca/fetch-siradig-detail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: arcaSessionId, cuit }),
+      });
+      const data = await res.json();
+      console.log("[ARCA siradig-detail]", JSON.stringify(data).slice(0, 3000));
+      if (data.detail?.debug) {
+        console.log("[ARCA siradig debug]", data.detail.debug.join("\n"));
+        setSiradigDebug(data.detail.debug);
+      }
+      if (data.ok && data.detail) {
+        const d = data.detail;
+        setSiradigDetail(d);
+        setSiradigFetched(true);
+
+        // ── Auto-populate Section 1: Cargas de familia ──
+        if (d.cargasFamilia && d.cargasFamilia.length > 0 && cargasFamilia.length === 0) {
+          const imported = d.cargasFamilia.map(c => ({
+            tipo: c.tipo === "conyuge" || /c[oó]nyuge|conviviente/i.test(c.tipo) ? "conyuge"
+              : /incapacitad/i.test(c.tipo) ? "hijo_incapacitado" : "hijo",
+            cuil: (c.cuil || "").replace(/\D/g, ""),
+            porcentaje: c.porcentaje || 100,
+            mesDesde: c.mesDesde || 1,
+            mesHasta: c.mesHasta || 12,
+          }));
+          setCargasFamilia(imported);
+          console.log(`[SiRADIG] Imported ${imported.length} cargas de familia`);
+        }
+
+        // ── Auto-populate Section 2: Otros empleadores (pluriempleo) ──
+        if (d.otrosEmpleadores && d.otrosEmpleadores.length > 0 && pluriempleo.length === 0) {
+          const imported = d.otrosEmpleadores.map(e => ({
+            cuitEmpleador: e.cuit || "",
+            razonSocial: e.razonSocial || "",
+            sueldoBrutoMensual: e.sueldoBruto || 0,
+            retencionGanancias: e.retencionGanancias || 0,
+            aporteSegSocial: e.aporteSegSocial || 0,
+            aporteObraSocial: e.aporteObraSocial || 0,
+            aporteSindical: e.aporteSindical || 0,
+          }));
+          setPluriempleo(imported);
+          console.log(`[SiRADIG] Imported ${imported.length} otros empleadores`);
+        }
+
+        // ── Auto-populate Section 3: Deducciones ──
+        if (d.deducciones3 && d.deducciones3.length > 0) {
+          // Convert deducciones to tickets for the comprobantes flow
+          const siradigTickets = d.deducciones3
+            .filter(ded => ded.montoAnual > 0 || ded.montoMensual > 0)
+            .map((ded, idx) => ({
+              id: `siradig-prev-${idx}-${Date.now()}`,
+              provider: ded.descripcion || ded.concepto || "SiRADIG importado",
+              amount: ded.montoMensual > 0 ? ded.montoMensual : Math.round(ded.montoAnual / 12),
+              date: new Date().toISOString().slice(0, 10),
+              type: "SiRADIG importado",
+              cuit: ded.cuitPrestador || "",
+              source: "siradig-import",
+              status: "loaded",
+              reason: `Importado de F.572 anterior — ${ded.concepto}`,
+              siradigCategory: ded.categoriaDeduxi || "otras_deducciones",
+              number: "",
+              mesDesde: ded.mesDesde || 1,
+              mesHasta: ded.mesHasta || 12,
+              montoAnual: ded.montoAnual,
+            }));
+
+          if (siradigTickets.length > 0) {
+            setTickets(prev => {
+              // Remove any previously imported SiRADIG tickets, keep others
+              const filtered = prev.filter(t => t.source !== "siradig-import");
+              return [...filtered, ...siradigTickets];
+            });
+            console.log(`[SiRADIG] Imported ${siradigTickets.length} deducciones as tickets`);
+          }
+
+          // Also populate specific fields:
+          // Alquiler
+          const alquilerDed = d.deducciones3.find(ded => ded.categoriaDeduxi === "alquiler");
+          if (alquilerDed && !alquilerData.activo) {
+            setAlquilerData({
+              activo: true,
+              cuitLocador: alquilerDed.cuitPrestador || "",
+              nombreLocador: alquilerDed.descripcion || "",
+              // SiRADIG stores the deductible amount (40%), we need the original
+              montoMensual: alquilerDed.montoMensual > 0
+                ? Math.round(alquilerDed.montoMensual / 0.4)
+                : Math.round(alquilerDed.montoAnual / 12 / 0.4),
+              tipoContrato: "vivienda",
+              mesDesde: alquilerDed.mesDesde || 1,
+              mesHasta: alquilerDed.mesHasta || 12,
+            });
+            console.log("[SiRADIG] Imported alquiler data");
+          }
+        }
+
+        // ── Auto-populate Section 4: Retenciones ──
+        if (d.retenciones4 && d.retenciones4.length > 0 && retenciones.length === 0) {
+          const imported = d.retenciones4.map(r => ({
+            tipo: mapRetencionTipo(r.categoriaDeduxi || r.tipo),
+            descripcion: r.descripcion || r.tipo || "",
+            cuitAgente: r.cuitAgente || "",
+            monto: r.monto || 0,
+            periodo: r.periodo || "",
+          }));
+          setRetenciones(imported);
+          console.log(`[SiRADIG] Imported ${imported.length} retenciones`);
+        }
+
+        // Update status indicators
+        if (d.estado) {
+          if (/presentad/i.test(d.estado)) setArcaStatus("sent");
+          if (d.tipo && /rectificativ/i.test(d.tipo)) {
+            setIsRectificativa(true);
+            const vMatch = d.tipo.match(/\d+/);
+            if (vMatch) setRectVersion(parseInt(vMatch[0]));
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[ARCA siradig-detail error]", e.message);
+    } finally {
+      setSiradigLoading(false);
+    }
+  };
+
+  // Helper: map SiRADIG retención category to our internal tipo
+  const mapRetencionTipo = (cat) => {
+    const map = {
+      impuesto_cheque: "imp_cheque",
+      percepciones_aduana: "percep_aduana",
+      pago_cuenta_3819: "pago_cuenta_3819",
+      pago_cuenta_5617: "pago_cuenta_5617",
+      autorretenciones_5683: "autoret_5683",
+      percepciones_usd: "otra",
+      percepciones_tarjeta: "otra",
+    };
+    return map[cat] || "otra";
+  };
+
   const handleArcaConnect = handleArcaStart;
   const handleUpdateClave = () => {
     if (!newClaveFiscal) return;
@@ -1036,10 +1189,11 @@ export function AppProvider({ children }) {
     arcaDebugShot, setArcaDebugShot, arcaDebugInfo, setArcaDebugInfo,
     handleGoogleLogin, handleEmailLogin, handleArcaStart, handleArcaComplete,
     handleRefreshCaptcha, handleArcaConnect, handleUpdateClave, handlePresent, handleRectificar,
-    fetchComprobantesFromArca, fetchCasasParticulares, classifyTicket,
+    fetchComprobantesFromArca, fetchCasasParticulares, fetchSiradigDetail, classifyTicket,
     casasWorkers, casasPayments, casasTotalDeducible, casasLoading, casasFetched, casasDebug, casasManual, setCasasManual,
     retenciones, setRetenciones,
     aportesEmpleador, aportesCuitEmpleador, aportesPeriodos, aportesLoading, aportesFetched,
+    siradigDetail, siradigLoading, siradigFetched, siradigDebug,
     cargasFamilia, setCargasFamilia,
     cargasConyuge, setCargasConyuge, cargasHijos, setCargasHijos,
     cargasHijosIncapacitados, setCargasHijosIncapacitados,
