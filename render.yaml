@@ -1,11 +1,10 @@
 services:
   - type: web
     name: deduxi-api
-    runtime: node
+    runtime: docker
     region: oregon
     plan: free
-    buildCommand: chmod +x scripts/render-build.sh && ./scripts/render-build.sh
-    startCommand: node apps/api/dist/server.js
+    dockerfilePath: ./Dockerfile.api
     envVars:
       - key: NODE_ENV
         value: production
