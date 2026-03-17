@@ -208,6 +208,7 @@ export default function ComprobanteUpload({ onResult, userCuit, compact = false 
           <p style={{ fontSize: 11, color: "#9ca3af" }}>
             JPG, PNG, WebP o PDF — max 10 MB
           </p>
+          <span style={{ display: "inline-block", fontSize: 9, fontWeight: 700, color: "#d97706", background: "#fffbeb", border: "1px solid #fde68a", padding: "2px 10px", borderRadius: 99, letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>En pruebas</span>
         </div>
       )}
     </div>
