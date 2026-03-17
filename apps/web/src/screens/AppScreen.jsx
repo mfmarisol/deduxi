@@ -201,41 +201,50 @@ export default function AppScreen() {
               </button>
               {openSection === "cargas" && (
                 <div style={{ padding: "0 16px 14px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: cargasConyuge ? "#faf5ff" : "transparent", borderRadius: 8, cursor: "pointer" }}
-                      onClick={() => setCargasConyuge(!cargasConyuge)}>
-                      <span style={{ fontSize: 14 }}>💍</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "#374151" }}>Cónyuge</span>
-                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${cargasConyuge ? "#7c3aed" : "#d1d5db"}`, background: cargasConyuge ? "#7c3aed" : "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {cargasConyuge && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>✓</span>}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: cargasHijos > 0 ? "#faf5ff" : "transparent", borderRadius: 8 }}>
-                      <span style={{ fontSize: 14 }}>👶</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "#374151" }}>Hijos &lt;18</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <button onClick={() => setCargasHijos(Math.max(0, cargasHijos - 1))} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#6b7280", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827", minWidth: 18, textAlign: "center" }}>{cargasHijos}</span>
-                        <button onClick={() => setCargasHijos(cargasHijos + 1)} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #7c3aed", background: "#faf5ff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: cargasHijosIncapacitados > 0 ? "#faf5ff" : "transparent", borderRadius: 8 }}>
-                      <span style={{ fontSize: 14 }}>♿</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "#374151" }}>Hijo/a incapacitado/a</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <button onClick={() => setCargasHijosIncapacitados(Math.max(0, cargasHijosIncapacitados - 1))} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#6b7280", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827", minWidth: 18, textAlign: "center" }}>{cargasHijosIncapacitados}</span>
-                        <button onClick={() => setCargasHijosIncapacitados(cargasHijosIncapacitados + 1)} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #7c3aed", background: "#faf5ff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-                      </div>
-                    </div>
+                  {/* Add buttons */}
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    {!cargasConyuge && <button onClick={() => setCargasConyuge(true)} style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", background: "#faf5ff", border: "1.5px dashed #ddd6fe", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>+ Cónyuge</button>}
+                    <button onClick={() => setCargasHijos(cargasHijos + 1)} style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", background: "#faf5ff", border: "1.5px dashed #ddd6fe", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>+ Hijo/a &lt;18</button>
+                    <button onClick={() => setCargasHijosIncapacitados(cargasHijosIncapacitados + 1)} style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", background: "#faf5ff", border: "1.5px dashed #ddd6fe", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>+ Hijo/a incap.</button>
                   </div>
+                  {/* List of cargas with CUIL + porcentaje */}
+                  {ctx.cargasFamilia.map((c, idx) => {
+                    const tipoLabel = c.tipo === "conyuge" ? "💍 Cónyuge" : c.tipo === "hijo_incapacitado" ? "♿ Hijo/a incapacitado/a" : "👶 Hijo/a menor de 18";
+                    const updateCarga = (field, val) => ctx.setCargasFamilia(prev => prev.map((p, i) => i === idx ? { ...p, [field]: val } : p));
+                    return (
+                      <div key={idx} style={{ background: "#faf5ff", border: "1px solid #ede9fe", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#5b21b6" }}>{tipoLabel}</span>
+                          <button onClick={() => ctx.setCargasFamilia(prev => prev.filter((_, i) => i !== idx))}
+                            style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <div style={{ flex: 2 }}>
+                            <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CUIL *</label>
+                            <input className="input-field" placeholder="20-12345678-9" value={c.cuil || ""}
+                              onChange={e => updateCarga("cuil", e.target.value)}
+                              style={{ fontSize: 12, padding: "6px 10px" }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>% deducción</label>
+                            <select className="input-field" value={c.porcentaje || 100}
+                              onChange={e => updateCarga("porcentaje", Number(e.target.value))}
+                              style={{ fontSize: 12, padding: "6px 10px" }}>
+                              <option value={100}>100%</option>
+                              <option value={50}>50%</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                   {cargasFamiliaMensual > 0 ? (
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, padding: "5px 10px", background: "#faf5ff", borderRadius: 6, fontSize: 11 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, padding: "5px 10px", background: "#faf5ff", borderRadius: 6, fontSize: 11 }}>
                       <span style={{ color: "#7c3aed", fontWeight: 600 }}>Deducción por cargas</span>
                       <span style={{ color: "#5b21b6", fontWeight: 700 }}>{fmt(cargasFamiliaMensual)}/mes</span>
                     </div>
                   ) : (
-                    <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 8, lineHeight: 1.4 }}>Si tenés cónyuge o hijos a cargo sin ingresos propios, marcalos acá para aumentar tu deducción.</p>
+                    <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4, lineHeight: 1.4 }}>Si tenés cónyuge o hijos a cargo sin ingresos propios, agregalos acá. Necesitás su CUIL.</p>
                   )}
                 </div>
               )}
@@ -251,10 +260,24 @@ export default function AppScreen() {
               </button>
               {openSection === "sindical" && (
                 <div style={{ padding: "0 16px 14px" }}>
-                  <input type="text" inputMode="numeric" placeholder="Ej: 25.000"
-                    value={cuotaSindical ? cuotaSindical.toLocaleString("es-AR") : ""}
-                    onChange={e => { const v = e.target.value.replace(/\./g, "").replace(",", "."); setCuotaSindical(parseFloat(v) || 0); }}
-                    className="input-field" style={{ fontSize: 14, fontWeight: 600, padding: "8px 12px" }} />
+                  <div className="form-row-2" style={{ marginBottom: 6 }}>
+                    <div style={{ flex: 2 }}>
+                      <input type="text" inputMode="numeric" placeholder="Ej: 25.000"
+                        value={cuotaSindical ? cuotaSindical.toLocaleString("es-AR") : ""}
+                        onChange={e => { const v = e.target.value.replace(/\./g, "").replace(",", "."); setCuotaSindical(parseFloat(v) || 0); }}
+                        className="input-field" style={{ fontSize: 14, fontWeight: 600, padding: "8px 12px" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <select className="input-field" value={ctx.cuotaSindicalDesde} onChange={e => ctx.setCuotaSindicalDesde(Number(e.target.value))} style={{ fontSize: 11, padding: "8px 6px" }}>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>Desde {["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][m-1]}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <select className="input-field" value={ctx.cuotaSindicalHasta} onChange={e => ctx.setCuotaSindicalHasta(Number(e.target.value))} style={{ fontSize: 11, padding: "8px 6px" }}>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>Hasta {["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][m-1]}</option>)}
+                      </select>
+                    </div>
+                  </div>
                   <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4, lineHeight: 1.4 }}>Monto mensual que te descuentan en tu recibo de sueldo, en pesos ($).</p>
                 </div>
               )}
@@ -295,10 +318,24 @@ export default function AppScreen() {
                             onChange={e => setAlquilerData(d => ({ ...d, nombreLocador: e.target.value }))} style={{ fontSize: 12 }} />
                         </div>
                       </div>
-                      <div>
-                        <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Monto mensual ($)</label>
-                        <input className="input-field" type="number" placeholder="0" value={alquilerData.montoMensual || ""}
-                          onChange={e => setAlquilerData(d => ({ ...d, montoMensual: parseFloat(e.target.value) || 0 }))} style={{ fontSize: 14, fontWeight: 600, width: "100%" }} />
+                      <div className="form-row-2">
+                        <div style={{ flex: 2 }}>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Monto mensual ($)</label>
+                          <input className="input-field" type="number" placeholder="0" value={alquilerData.montoMensual || ""}
+                            onChange={e => setAlquilerData(d => ({ ...d, montoMensual: parseFloat(e.target.value) || 0 }))} style={{ fontSize: 14, fontWeight: 600 }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Desde mes</label>
+                          <select className="input-field" value={alquilerData.mesDesde || 1} onChange={e => setAlquilerData(d => ({ ...d, mesDesde: Number(e.target.value) }))} style={{ fontSize: 12 }}>
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][m-1]}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Hasta mes</label>
+                          <select className="input-field" value={alquilerData.mesHasta || 12} onChange={e => setAlquilerData(d => ({ ...d, mesHasta: Number(e.target.value) }))} style={{ fontSize: 12 }}>
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"][m-1]}</option>)}
+                          </select>
+                        </div>
                       </div>
                       {alquilerData.montoMensual > 0 && (
                         <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", background: "#ecfdf5", borderRadius: 8, fontSize: 12 }}>
@@ -369,16 +406,44 @@ export default function AppScreen() {
                               style={{ fontSize: 12 }} />
                           </div>
                         </div>
-                        <div>
-                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Sueldo bruto mensual ($)</label>
-                          <input className="input-field" type="number" placeholder="0" value={emp.sueldoBrutoMensual}
-                            onChange={e => { const v = e.target.value; setPluriempleo(prev => prev.map((p, i) => i === idx ? { ...p, sueldoBrutoMensual: v } : p)); }}
+                        <div className="form-row-2">
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Sueldo bruto mensual ($)</label>
+                            <input className="input-field" type="number" placeholder="0" value={emp.sueldoBrutoMensual}
+                              onChange={e => { const v = e.target.value; setPluriempleo(prev => prev.map((p, i) => i === idx ? { ...p, sueldoBrutoMensual: v } : p)); }}
+                              style={{ fontSize: 12 }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Retención Ganancias ($)</label>
+                            <input className="input-field" type="number" placeholder="0" value={emp.retencionGanancias || ""}
+                              onChange={e => { const v = e.target.value; setPluriempleo(prev => prev.map((p, i) => i === idx ? { ...p, retencionGanancias: v } : p)); }}
+                              style={{ fontSize: 12 }} />
+                          </div>
+                        </div>
+                        <div className="form-row-2">
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Aporte seg. social ($)</label>
+                            <input className="input-field" type="number" placeholder="0" value={emp.aporteSegSocial || ""}
+                              onChange={e => { const v = e.target.value; setPluriempleo(prev => prev.map((p, i) => i === idx ? { ...p, aporteSegSocial: v } : p)); }}
+                              style={{ fontSize: 12 }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Aporte obra social ($)</label>
+                            <input className="input-field" type="number" placeholder="0" value={emp.aporteObraSocial || ""}
+                              onChange={e => { const v = e.target.value; setPluriempleo(prev => prev.map((p, i) => i === idx ? { ...p, aporteObraSocial: v } : p)); }}
+                              style={{ fontSize: 12 }} />
+                          </div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Aporte sindical ($)</label>
+                          <input className="input-field" type="number" placeholder="0" value={emp.aporteSindical || ""}
+                            onChange={e => { const v = e.target.value; setPluriempleo(prev => prev.map((p, i) => i === idx ? { ...p, aporteSindical: v } : p)); }}
                             style={{ fontSize: 12, width: "100%" }} />
                         </div>
                       </div>
                     </div>
                   ))}
-                  <button onClick={() => setPluriempleo(prev => [...prev, { cuitEmpleador: "", razonSocial: "", sueldoBrutoMensual: "" }])}
+                  <button onClick={() => setPluriempleo(prev => [...prev, { cuitEmpleador: "", razonSocial: "", sueldoBrutoMensual: "", aporteSegSocial: "", aporteObraSocial: "", aporteSindical: "", retencionGanancias: "" }])}
                     style={{ width: "100%", fontSize: 11, fontWeight: 700, color: "#7c3aed", background: "#faf5ff", border: "1.5px dashed #ddd6fe", borderRadius: 8, padding: "8px", cursor: "pointer" }}>+ Agregar otro empleador</button>
                 </div>
               )}
@@ -903,10 +968,16 @@ export default function AppScreen() {
                       { key: "honorarios_medicos", label: "Médico", icon: "👨‍⚕️" },
                       { key: "prepaga", label: "Prepaga", icon: "🏥" },
                       { key: "educacion", label: "Educación", icon: "📚" },
-                      { key: "seguro_vida", label: "Seguro", icon: "🛡️" },
+                      { key: "seguro_vida", label: "Seguro vida", icon: "🛡️" },
+                      { key: "seguro_retiro", label: "Retiro privado", icon: "🏦" },
                       { key: "donaciones", label: "Donación", icon: "🎁" },
+                      { key: "hipotecario", label: "Hipotecario", icon: "🏦" },
                       { key: "indumentaria_equipamiento", label: "Equipamiento", icon: "💻" },
-                      { key: "otras_deducciones", label: "Otra deducción", icon: "📋" },
+                      { key: "gastos_sepelio", label: "Sepelio", icon: "⚱️" },
+                      { key: "sgr", label: "SGR", icon: "🤝" },
+                      { key: "fondos_comunes_inversion", label: "FCI retiro", icon: "📊" },
+                      { key: "vehiculo_corredores", label: "Vehículo", icon: "🚗" },
+                      { key: "otras_deducciones", label: "Otra", icon: "📋" },
                     ];
                     return (
                     <div key={t.id} style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 12, padding: "13px 16px", marginBottom: 8 }}>

@@ -417,19 +417,42 @@ export function AppProvider({ children }) {
   const [savingRrhh, setSavingRrhh] = useState(false);
 
   /* Cargas de familia (Art. 23 inc. b) — declaración manual */
-  const [cargasConyuge, setCargasConyuge] = useState(false);
-  const [cargasHijos, setCargasHijos] = useState(0);
-  const [cargasHijosIncapacitados, setCargasHijosIncapacitados] = useState(0);
+  // Each entry: { tipo: "conyuge"|"hijo"|"hijo_incapacitado", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 }
+  const [cargasFamilia, setCargasFamilia] = useState([]);
+  // Legacy compat getters
+  const cargasConyuge = cargasFamilia.some(c => c.tipo === "conyuge");
+  const setCargasConyuge = (val) => {
+    if (val) setCargasFamilia(prev => [...prev, { tipo: "conyuge", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 }]);
+    else setCargasFamilia(prev => prev.filter(c => c.tipo !== "conyuge"));
+  };
+  const cargasHijos = cargasFamilia.filter(c => c.tipo === "hijo").length;
+  const setCargasHijos = (n) => {
+    setCargasFamilia(prev => {
+      const others = prev.filter(c => c.tipo !== "hijo");
+      const hijos = Array.from({ length: n }, (_, i) => prev.filter(c => c.tipo === "hijo")[i] || { tipo: "hijo", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+      return [...others, ...hijos];
+    });
+  };
+  const cargasHijosIncapacitados = cargasFamilia.filter(c => c.tipo === "hijo_incapacitado").length;
+  const setCargasHijosIncapacitados = (n) => {
+    setCargasFamilia(prev => {
+      const others = prev.filter(c => c.tipo !== "hijo_incapacitado");
+      const hijos = Array.from({ length: n }, (_, i) => prev.filter(c => c.tipo === "hijo_incapacitado")[i] || { tipo: "hijo_incapacitado", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+      return [...others, ...hijos];
+    });
+  };
 
   /* Cuota sindical (Art. 82 inc. a) — monto mensual del recibo */
   const [cuotaSindical, setCuotaSindical] = useState(0);
+  const [cuotaSindicalDesde, setCuotaSindicalDesde] = useState(1);
+  const [cuotaSindicalHasta, setCuotaSindicalHasta] = useState(12);
 
   /* Sueldo bruto mensual — para estimar tasa marginal real */
   const [sueldoBruto, setSueldoBruto] = useState(0);
 
   /* Pluriempleo (Art. 14 RG 4003) — ingresos de otros empleadores */
   const [pluriempleo, setPluriempleo] = useState([]);
-  // Each entry: { cuitEmpleador, razonSocial, sueldoBrutoMensual }
+  // Each entry: { cuitEmpleador, razonSocial, sueldoBrutoMensual, aporteSegSocial, aporteObraSocial, aporteSindical, retencionGanancias }
 
   /* Alquiler vivienda (RG 4003) — datos del contrato */
   const [alquilerData, setAlquilerData] = useState({
@@ -438,6 +461,8 @@ export function AppProvider({ children }) {
     nombreLocador: "",
     montoMensual: 0,
     tipoContrato: "vivienda", // vivienda habitual
+    mesDesde: 1,
+    mesHasta: 12,
   });
 
   /* Casas Particulares (domestic workers) */
@@ -515,7 +540,18 @@ export function AppProvider({ children }) {
     // Restore cargas de familia + datos recibo
     try {
       const savedCargas = localStorage.getItem("deduxi_cargas_familia");
-      if (savedCargas) { const c = JSON.parse(savedCargas); setCargasConyuge(!!c.conyuge); setCargasHijos(c.hijos || 0); setCargasHijosIncapacitados(c.hijosIncapacitados || 0); }
+      if (savedCargas) {
+        const c = JSON.parse(savedCargas);
+        // Support new format (array) and legacy format ({conyuge, hijos, hijosIncapacitados})
+        if (Array.isArray(c)) { setCargasFamilia(c); }
+        else { /* legacy migration */
+          const arr = [];
+          if (c.conyuge) arr.push({ tipo: "conyuge", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+          for (let i = 0; i < (c.hijos || 0); i++) arr.push({ tipo: "hijo", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+          for (let i = 0; i < (c.hijosIncapacitados || 0); i++) arr.push({ tipo: "hijo_incapacitado", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+          setCargasFamilia(arr);
+        }
+      }
       const savedSueldo = localStorage.getItem("deduxi_sueldo_bruto");
       if (savedSueldo) setSueldoBruto(parseFloat(savedSueldo) || 0);
       const savedSindical = localStorage.getItem("deduxi_cuota_sindical");
@@ -535,8 +571,8 @@ export function AppProvider({ children }) {
     localStorage.setItem("deduxi_tickets", JSON.stringify(toSave));
   }, [tickets]);
   useEffect(() => {
-    localStorage.setItem("deduxi_cargas_familia", JSON.stringify({ conyuge: cargasConyuge, hijos: cargasHijos, hijosIncapacitados: cargasHijosIncapacitados }));
-  }, [cargasConyuge, cargasHijos, cargasHijosIncapacitados]);
+    localStorage.setItem("deduxi_cargas_familia", JSON.stringify(cargasFamilia));
+  }, [cargasFamilia]);
   useEffect(() => {
     localStorage.setItem("deduxi_pluriempleo", JSON.stringify(pluriempleo));
   }, [pluriempleo]);
@@ -564,7 +600,7 @@ export function AppProvider({ children }) {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     const t = setTimeout(showSavedFeedback, 800);
     return () => clearTimeout(t);
-  }, [sueldoBruto, cuotaSindical, cargasConyuge, cargasHijos, cargasHijosIncapacitados, alquilerData, pluriempleo]);
+  }, [sueldoBruto, cuotaSindical, cargasFamilia, alquilerData, pluriempleo]);
 
   // Aplica porcentajes de deducibilidad y topes anuales según normativa vigente
   // Ley 20.628, RG ARCA — valores 2026 S1
@@ -614,8 +650,13 @@ export function AppProvider({ children }) {
   const totalPending  = tickets.filter(t => t.status === "pending").reduce((a, b) => a + b.amount, 0);
   const resolvedCount = tickets.filter(t => t.status === "approved" || t.status === "loaded" || t.status === "rejected").length;
 
-  // Cargas de familia — deducción mensual
-  const cargasFamiliaMensual = (cargasConyuge ? cargasFamiliaMontos2026.conyuge.mensual : 0) + (cargasHijos * cargasFamiliaMontos2026.hijo.mensual) + (cargasHijosIncapacitados * cargasFamiliaMontos2026.hijo_incapacitado.mensual);
+  // Cargas de familia — deducción mensual (con porcentaje 50%/100%)
+  const cargasFamiliaMensual = cargasFamilia.reduce((acc, c) => {
+    const montos = c.tipo === "conyuge" ? cargasFamiliaMontos2026.conyuge
+      : c.tipo === "hijo_incapacitado" ? cargasFamiliaMontos2026.hijo_incapacitado
+      : cargasFamiliaMontos2026.hijo;
+    return acc + montos.mensual * ((c.porcentaje || 100) / 100);
+  }, 0);
 
   // Alquiler — deducción mensual (40% del monto, tope = GNI anual / 12)
   const alquilerTopeAnual = topesAnuales2026.alquiler.tope;
@@ -991,9 +1032,10 @@ export function AppProvider({ children }) {
     fetchComprobantesFromArca, fetchCasasParticulares, classifyTicket,
     casasWorkers, casasPayments, casasTotalDeducible, casasLoading, casasFetched, casasDebug,
     aportesEmpleador, aportesCuitEmpleador, aportesPeriodos, aportesLoading, aportesFetched,
+    cargasFamilia, setCargasFamilia,
     cargasConyuge, setCargasConyuge, cargasHijos, setCargasHijos,
     cargasHijosIncapacitados, setCargasHijosIncapacitados,
-    cuotaSindical, setCuotaSindical,
+    cuotaSindical, setCuotaSindical, cuotaSindicalDesde, setCuotaSindicalDesde, cuotaSindicalHasta, setCuotaSindicalHasta,
     sueldoBruto, setSueldoBruto,
     pluriempleo, setPluriempleo,
     alquilerData, setAlquilerData, alquilerDeduccionMensual,
