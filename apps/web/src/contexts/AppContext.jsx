@@ -52,6 +52,7 @@ export const topesAnuales2026 = {
   vehiculo_corredores:  { porcentaje: 0.01, desc: "Hasta 1% de remuneraciones (vehículo propio)" },
   educacion:            { tope: 2060721.00, tipo: "anual", desc: "40% del GNI — gastos educativos hijos hasta 24 años" },
   indumentaria_equipamiento: { desc: "Sin tope — debe ser obligatorio para el trabajo y no reembolsado" },
+  ropa_trabajo:              { desc: "Sin tope — debe ser obligatorio para el trabajo y no reembolsado" },
 };
 
 /**
@@ -299,7 +300,8 @@ export const siradigCategories = {
   donaciones:                 { label: "Donaciones a entidades exentas",                 icon: "🎁",  shortLabel: "Donaciones",           color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 81 inc. c – hasta 5% gan. neta", seccion: 3 },
   hipotecario:                { label: "Intereses préstamo hipotecario",                 icon: "🏦",  shortLabel: "Hipotecario",          color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 81 inc. a – con tope anual", seccion: 3 },
   gastos_sepelio:             { label: "Gastos de sepelio",                              icon: "⚱️",  shortLabel: "Sepelio",              color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 22 inc. d – con tope anual", seccion: 3 },
-  indumentaria_equipamiento:  { label: "Indumentaria y Equipamiento para uso en trabajo",icon: "💻",  shortLabel: "Equipamiento",         color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 82 inc. h", seccion: 3 },
+  indumentaria_equipamiento:  { label: "Equipamiento para uso en el trabajo",           icon: "💻",  shortLabel: "Equipamiento",         color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 82 inc. h", seccion: 3 },
+  ropa_trabajo:               { label: "Ropa de trabajo",                              icon: "👔",  shortLabel: "Ropa trabajo",         color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 82 inc. h", seccion: 3 },
   alquiler:                   { label: "Alquiler de inmuebles - casa habitación",        icon: "🏠",  shortLabel: "Alquiler",             color: "#d97706", bg: "#fffbeb", border: "#fde68a", articulo: "RG 4003 – 40% deducible", seccion: 3 },
   servicio_domestico:         { label: "Deducción del personal doméstico",               icon: "🏡",  shortLabel: "Serv. doméstico",      color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Ley 26.063 art. 16", seccion: 3 },
   sgr:                        { label: "Aporte a sociedades de garantía recíproca",      icon: "🤝",  shortLabel: "SGR",                  color: "#059669", bg: "#ecfdf5", border: "#a7f3d0", articulo: "Art. 81 inc. d", seccion: 3 },
@@ -734,6 +736,38 @@ export function AppProvider({ children }) {
   const handleArcaStart = async () => {
     const cuitDigits = cuit.replace(/\D/g, "");
     if (cuitDigits.length !== 11) { setArcaError("cuit"); return; }
+
+    // ── Clear previous user data if CUIT changed ──
+    const prevCuit = localStorage.getItem("deduxi_cuit");
+    if (prevCuit && prevCuit.replace(/\D/g, "") !== cuitDigits) {
+      console.log(`[ARCA] CUIT changed from ${prevCuit} to ${cuitDigits}, clearing previous data`);
+      // Clear all user-specific state
+      setTickets([]);
+      setCargasFamilia([]);
+      setPluriempleo([]);
+      setAlquilerData({ activo: false, cuitLocador: "", nombreLocador: "", montoMensual: 0, tipoContrato: "vivienda", mesDesde: 1, mesHasta: 12 });
+      setSueldoBruto(0);
+      setCuotaSindical(0);
+      setRetenciones([]);
+      setCasasManual([]);
+      setSiradigDetail(null);
+      setSiradigFetched(false);
+      setArcaFetched(false);
+      setAportesFetched(false);
+      setCasasFetched(false);
+      setCasasWorkers([]); setCasasPayments([]); setCasasTotalDeducible(0);
+      setAportesPeriodos([]); setAportesEmpleador(""); setAportesCuitEmpleador("");
+      // Clear localStorage
+      localStorage.removeItem("deduxi_tickets");
+      localStorage.removeItem("deduxi_cargas_familia");
+      localStorage.removeItem("deduxi_pluriempleo");
+      localStorage.removeItem("deduxi_alquiler");
+      localStorage.removeItem("deduxi_sueldo_bruto");
+      localStorage.removeItem("deduxi_cuota_sindical");
+      localStorage.removeItem("deduxi_arca_fetched");
+      localStorage.removeItem("deduxi_user_name");
+    }
+
     setArcaError(null);
     setArcaErrMsg("");
     setArcaUserName("");

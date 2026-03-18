@@ -160,29 +160,6 @@ export default function AppScreen() {
               width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer", marginBottom: 20,
             }}>{tickets.length === 0 ? "Importar comprobantes →" : "Ver mis comprobantes →"}</button>
 
-            {/* SiRADIG import status */}
-            {siradigLoading && (
-              <div style={{ ...cardStyle, marginBottom: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.03)" }}>
-                <Spinner size={14} color="#7c3aed" />
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>Importando F.572 anterior de SiRADIG…</span>
-              </div>
-            )}
-            {siradigFetched && siradigDetail && (
-              <div style={{ ...cardStyle, marginBottom: 12, padding: "10px 14px", background: "#ecfdf5", border: "1.5px solid #a7f3d0" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 14 }}>📋</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>F.572 anterior importado</p>
-                    <p style={{ fontSize: 10, color: "#6b7280" }}>
-                      {siradigDetail.periodo && `Período ${siradigDetail.periodo} · `}
-                      {siradigDetail.tipo && `${siradigDetail.tipo} · `}
-                      {(siradigDetail.cargasFamilia?.length || 0) + (siradigDetail.deducciones3?.length || 0) + (siradigDetail.retenciones4?.length || 0)} items importados
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Collapsible data sections */}
             <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Datos personales</p>
 
@@ -716,7 +693,7 @@ export default function AppScreen() {
                   </div>
                 )}
 
-                <button onClick={() => { setAnalyzing(true); setTimeout(() => { setTickets(prev => prev.map(t => ({ ...t, ...classifyTicket(t) }))); setAnalyzing(false); setAnalyzed(true); setStep(2); }, 2200); }} className="gradient-btn" style={{ width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer" }}>✨ Re-analizar y clasificar →</button>
+                <button onClick={() => { setAnalyzing(true); setTimeout(() => { setTickets(prev => prev.map(t => t.userDecided || t.source === "siradig-import" ? t : { ...t, ...classifyTicket(t) })); setAnalyzing(false); setAnalyzed(true); setStep(2); }, 2200); }} className="gradient-btn" style={{ width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer" }}>✨ Re-analizar y clasificar →</button>
               </div>
             );
           }
@@ -752,7 +729,15 @@ export default function AppScreen() {
             if (tickets.length === 0) return;
             setAnalyzing(true);
             setTimeout(() => {
-              setTickets(prev => prev.map(t => ({ ...t, ...classifyTicket(t) })));
+              // Only classify tickets that haven't been manually decided by the user
+              // If ticket already has status approved/rejected/loaded AND was set by user action, skip it
+              setTickets(prev => prev.map(t => {
+                // Skip tickets the user already confirmed/rejected manually
+                if (t.userDecided) return t;
+                // Skip tickets imported from SiRADIG (already classified)
+                if (t.source === "siradig-import") return t;
+                return { ...t, ...classifyTicket(t) };
+              }));
               setAnalyzing(false);
               setAnalyzed(true);
               setStep(2);
@@ -1058,6 +1043,7 @@ export default function AppScreen() {
                       { key: "donaciones", label: "Donación", icon: "🎁" },
                       { key: "hipotecario", label: "Hipotecario", icon: "🏦" },
                       { key: "indumentaria_equipamiento", label: "Equipamiento", icon: "💻" },
+                      { key: "ropa_trabajo", label: "Ropa trabajo", icon: "👔" },
                       { key: "gastos_sepelio", label: "Sepelio", icon: "⚱️" },
                       { key: "sgr", label: "SGR", icon: "🤝" },
                       { key: "fondos_comunes_inversion", label: "FCI retiro", icon: "📊" },
@@ -1080,7 +1066,7 @@ export default function AppScreen() {
                             color: isExpanded ? "#fff" : "#059669", fontSize: 14, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center",
                           }}>✓</button>
                           <button onClick={() => {
-                            setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "rejected", reason: "Marcado como no deducible" } : tk));
+                            setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "rejected", reason: "Marcado como no deducible", userDecided: true } : tk));
                             ctx.setConfirmingTicketId(null);
                           }} title="No aplica" style={{
                             width: 32, height: 32, borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2",
@@ -1093,7 +1079,7 @@ export default function AppScreen() {
                           {quickCategories.map(cat => (
                             <button key={cat.key} onClick={() => {
                               const catInfo = siradigCategories[cat.key];
-                              setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "approved", reason: catInfo.label + " – " + catInfo.articulo, siradigCategory: cat.key } : tk));
+                              setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "approved", reason: catInfo.label + " – " + catInfo.articulo, siradigCategory: cat.key, userDecided: true } : tk));
                               ctx.setConfirmingTicketId(null);
                             }} style={{
                               padding: "5px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff",
@@ -1205,6 +1191,29 @@ export default function AppScreen() {
 
           return (
             <div>
+              {/* SiRADIG import status */}
+              {siradigLoading && (
+                <div style={{ ...cardStyle, marginBottom: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.03)" }}>
+                  <Spinner size={14} color="#7c3aed" />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>Importando datos de F.572 anterior…</span>
+                </div>
+              )}
+              {siradigFetched && siradigDetail && (siradigDetail.deducciones3?.length > 0 || siradigDetail.cargasFamilia?.length > 0) && (
+                <div style={{ ...cardStyle, marginBottom: 12, padding: "10px 14px", background: "#ecfdf5", border: "1.5px solid #a7f3d0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>📋</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>Datos importados del F.572 anterior</p>
+                      <p style={{ fontSize: 10, color: "#6b7280" }}>
+                        {siradigDetail.periodo && `Período ${siradigDetail.periodo} · `}
+                        {siradigDetail.tipo && `${siradigDetail.tipo} · `}
+                        {(siradigDetail.cargasFamilia?.length || 0) + (siradigDetail.deducciones3?.length || 0) + (siradigDetail.retenciones4?.length || 0)} items
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Single borrador card container */}
               <div style={{ ...cardStyle, borderRadius: 16, padding: 0, overflow: "hidden", border: "1.5px solid rgba(139,92,246,0.20)", marginBottom: 20 }}>
 
@@ -1416,7 +1425,7 @@ export default function AppScreen() {
               <div>
                 <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(139,92,246,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(139,92,246,0.04)" }}>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#5b21b6" }}>4 - Retenciones, Percepciones y Pagos a Cuenta</p>
-                  <button onClick={() => setStep(1)} style={{ fontSize: 10, color: "#7c3aed", background: "rgba(124,58,237,0.06)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Editar</button>
+                  <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Editá abajo ↓</span>
                 </div>
                 {(() => {
                   const sec4Entries = sectionEntries.filter(([k]) => {
@@ -1424,68 +1433,32 @@ export default function AppScreen() {
                     return cat && cat.seccion === 4;
                   });
                   const sec4Total = sec4Entries.reduce((sum, [, tix]) => sum + tix.reduce((s, t) => s + t.amount, 0), 0);
+                  const retencionesManual = ctx.retenciones || [];
+                  const retencionesTotal = retencionesManual.reduce((sum, r) => sum + (parseFloat(r.monto) || 0), 0);
 
-                  if (sec4Entries.length === 0 && (!ctx.retenciones || ctx.retenciones.length === 0)) {
-                    const tiposRetencion = [
-                      { key: "imp_cheque", label: "Imp. créditos y débitos bancarios", icon: "🏧" },
-                      { key: "percep_aduana", label: "Percepciones/retenciones aduaneras", icon: "🛃" },
-                      { key: "pago_cuenta_3819", label: "Pago a cuenta RG 3819 (efectivo)", icon: "💵" },
-                      { key: "pago_cuenta_5617", label: "Pago a cuenta RG 5617/2024", icon: "💵" },
-                      { key: "autoret_5683", label: "Autorretenciones RG 5683/2025", icon: "💵" },
-                      { key: "otra", label: "Otra retención/percepción", icon: "📋" },
-                    ];
-                    return (
-                      <div style={{ padding: "12px 16px" }}>
-                        <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>
-                          Cargá retenciones, percepciones y pagos a cuenta que no figuran en Mis Comprobantes.
-                        </p>
-                        {(ctx.retenciones || []).map((r, idx) => (
-                          <div key={idx} style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb" }}>{tiposRetencion.find(t => t.key === r.tipo)?.label || r.tipo}</span>
-                              <button onClick={() => ctx.setRetenciones(prev => prev.filter((_, i) => i !== idx))}
-                                style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
-                            </div>
-                            <div className="form-row-2">
-                              <div style={{ flex: 1 }}>
-                                <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CUIT agente</label>
-                                <input className="input-field" placeholder="30-00000000-0" value={r.cuitAgente || ""}
-                                  onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, cuitAgente: e.target.value } : p))}
-                                  style={{ fontSize: 12, padding: "6px 10px" }} />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Monto ($)</label>
-                                <input className="input-field" type="number" placeholder="0" value={r.monto || ""}
-                                  onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, monto: e.target.value } : p))}
-                                  style={{ fontSize: 12, padding: "6px 10px" }} />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {tiposRetencion.map(tipo => (
-                            <button key={tipo.key} onClick={() => ctx.setRetenciones(prev => [...(prev || []), { tipo: tipo.key, cuitAgente: "", monto: "", periodo: "" }])}
-                              style={{ fontSize: 10, fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "5px 10px", cursor: "pointer" }}>
-                              {tipo.icon} {tipo.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  }
+                  const tiposRetencion = [
+                    { key: "imp_cheque", label: "Imp. créditos y débitos", icon: "🏧" },
+                    { key: "percep_aduana", label: "Percep./ret. aduaneras", icon: "🛃" },
+                    { key: "pago_cuenta_3819", label: "Pago cta. RG 3819", icon: "💵" },
+                    { key: "pago_cuenta_5617", label: "Pago cta. RG 5617", icon: "💵" },
+                    { key: "autoret_5683", label: "Autoret. RG 5683", icon: "💵" },
+                    { key: "otra", label: "Otra ret./percep.", icon: "📋" },
+                  ];
+
                   return (
-                    <>
+                    <div style={{ padding: "12px 16px" }}>
+                      {/* Auto-imported from comprobantes (section 4 tickets) */}
                       {sec4Entries.map(([catKey, catTickets]) => {
                         const catConfig = siradigCategories[catKey] || siradigCategories.por_confirmar;
                         const sectionTotal = catTickets.reduce((sum, t) => sum + t.amount, 0);
                         return (
-                          <div key={catKey}>
-                            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 16px 8px 28px", borderTop: "1px solid rgba(139,92,246,0.1)", background: "rgba(99,102,241,0.04)" }}>
+                          <div key={catKey} style={{ marginBottom: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(99,102,241,0.1)" }}>
                               <span style={{ fontSize: 11, fontWeight: 700, color: "#4f46e5" }}>{catConfig.label}</span>
                               <span style={{ fontSize: 11, fontWeight: 700, color: "#4f46e5" }}>{fmt(sectionTotal)}</span>
                             </div>
                             {catTickets.map((t, ti) => (
-                              <div key={ti} style={{ display: "flex", justifyContent: "space-between", padding: "3px 16px 3px 40px", fontSize: 10 }}>
+                              <div key={ti} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0 3px 12px", fontSize: 10 }}>
                                 <span style={{ color: "#6b7280" }}>{fmtCuit(t.cuit)} — {getMonth(t.date)}</span>
                                 <span style={{ color: "#374151" }}>{fmt(t.amount)}</span>
                               </div>
@@ -1493,10 +1466,50 @@ export default function AppScreen() {
                           </div>
                         );
                       })}
-                      <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px", borderTop: "1px solid rgba(139,92,246,0.1)", background: "rgba(139,92,246,0.04)" }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Subtotal: {fmt(sec4Total)}</span>
+
+                      {/* Manual retenciones entries */}
+                      {retencionesManual.map((r, idx) => (
+                        <div key={idx} style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb" }}>{tiposRetencion.find(t => t.key === r.tipo)?.label || r.tipo}</span>
+                            <button onClick={() => ctx.setRetenciones(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
+                          </div>
+                          <div className="form-row-2">
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CUIT agente</label>
+                              <input className="input-field" placeholder="30-00000000-0" value={r.cuitAgente || ""}
+                                onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, cuitAgente: e.target.value } : p))}
+                                style={{ fontSize: 12, padding: "6px 10px" }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Monto ($)</label>
+                              <input className="input-field" type="number" placeholder="0" value={r.monto || ""}
+                                onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, monto: parseFloat(e.target.value) || 0 } : p))}
+                                style={{ fontSize: 12, padding: "6px 10px" }} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Add retención buttons — always visible */}
+                      <p style={{ fontSize: 10, color: "#9ca3af", marginBottom: 6, marginTop: retencionesManual.length > 0 ? 8 : 0 }}>Agregar retención / percepción:</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {tiposRetencion.map(tipo => (
+                          <button key={tipo.key} onClick={() => ctx.setRetenciones(prev => [...(prev || []), { tipo: tipo.key, cuitAgente: "", monto: 0, periodo: "" }])}
+                            style={{ fontSize: 10, fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "5px 10px", cursor: "pointer" }}>
+                            {tipo.icon} {tipo.label}
+                          </button>
+                        ))}
                       </div>
-                    </>
+
+                      {/* Subtotal */}
+                      {(sec4Total + retencionesTotal > 0) && (
+                        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 0", marginTop: 8, borderTop: "1px solid rgba(139,92,246,0.1)" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Subtotal: {fmt(sec4Total + retencionesTotal)}</span>
+                        </div>
+                      )}
+                    </div>
                   );
                 })()}
               </div>
