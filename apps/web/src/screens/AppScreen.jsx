@@ -1006,15 +1006,47 @@ export default function AppScreen() {
                             <p style={{ fontSize: 10, color: catConfig.color, opacity: 0.7 }}>{catTickets.length} comprobante{catTickets.length > 1 ? "s" : ""}</p>
                           </div>
                         </div>
-                        {catTickets.map((t, i) => (
-                          <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "10px 16px", borderBottom: i < catTickets.length - 1 ? "1px solid #f5f3ff" : "none", background: i % 2 === 0 ? "#fff" : "#fdfcff" }}>
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.provider}</p>
-                              <p style={{ fontSize: 11, color: "#9ca3af" }}>{t.date} - {t.type}</p>
+                        {catTickets.map((t, i) => {
+                          const isChanging = ctx.editingTicketId === t.id;
+                          return (
+                          <div key={t.id} style={{ padding: "10px 16px", borderBottom: i < catTickets.length - 1 ? "1px solid #f5f3ff" : "none", background: i % 2 === 0 ? "#fff" : "#fdfcff" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.provider}</p>
+                                <p style={{ fontSize: 11, color: "#9ca3af" }}>{t.date} - {t.type}</p>
+                              </div>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#111827", flexShrink: 0 }}>{fmt(t.amount)}</span>
+                              <button onClick={() => ctx.setEditingTicketId(isChanging ? null : t.id)} style={{ fontSize: 9, color: "#7c3aed", background: "rgba(124,58,237,0.06)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>
+                                {isChanging ? "✕" : "Cambiar"}
+                              </button>
                             </div>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#111827", flexShrink: 0 }}>{fmt(t.amount)}</span>
+                            {isChanging && (
+                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {[
+                                  { key: "honorarios_medicos", label: "Médico", icon: "👨‍⚕️" }, { key: "prepaga", label: "Prepaga", icon: "🏥" },
+                                  { key: "educacion", label: "Educación", icon: "📚" }, { key: "seguro_vida", label: "Seguro vida", icon: "🛡️" },
+                                  { key: "donaciones", label: "Donación", icon: "🎁" }, { key: "hipotecario", label: "Hipotecario", icon: "🏦" },
+                                  { key: "indumentaria_equipamiento", label: "Equipamiento", icon: "💻" }, { key: "ropa_trabajo", label: "Ropa trabajo", icon: "👔" },
+                                  { key: "otras_deducciones", label: "Otra", icon: "📋" },
+                                ].filter(c => c.key !== catKey).map(cat => (
+                                  <button key={cat.key} onClick={() => {
+                                    const ci = siradigCategories[cat.key];
+                                    setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, siradigCategory: cat.key, reason: ci.label + " – " + ci.articulo, userDecided: true } : tk));
+                                    ctx.setEditingTicketId(null);
+                                  }} style={{ fontSize: 9, fontWeight: 600, color: "#7c3aed", background: "#faf5ff", border: "1px solid #ddd6fe", borderRadius: 6, padding: "3px 8px", cursor: "pointer" }}>
+                                    {cat.icon} {cat.label}
+                                  </button>
+                                ))}
+                                <button onClick={() => {
+                                  setTickets(prev => prev.map(tk => tk.id === t.id ? { ...tk, status: "rejected", reason: "Marcado como no deducible", userDecided: true } : tk));
+                                  ctx.setEditingTicketId(null);
+                                }} style={{ fontSize: 9, fontWeight: 600, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "3px 8px", cursor: "pointer" }}>
+                                  ✕ No deducible
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        ))}
+                        );})}
                       </div>
                     );
                   })}

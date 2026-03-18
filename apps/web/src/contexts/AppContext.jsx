@@ -575,6 +575,8 @@ export function AppProvider({ children }) {
       if (savedPluriempleo) setPluriempleo(JSON.parse(savedPluriempleo) || []);
       const savedAlquiler = localStorage.getItem("deduxi_alquiler");
       if (savedAlquiler) setAlquilerData(JSON.parse(savedAlquiler));
+      const savedRetenciones = localStorage.getItem("deduxi_retenciones");
+      if (savedRetenciones) setRetenciones(JSON.parse(savedRetenciones) || []);
     } catch(e) {}
   }, []);
   useEffect(() => {
@@ -600,6 +602,9 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem("deduxi_cuota_sindical", cuotaSindical.toString());
   }, [cuotaSindical]);
+  useEffect(() => {
+    localStorage.setItem("deduxi_retenciones", JSON.stringify(retenciones));
+  }, [retenciones]);
 
   // Autoguardado feedback
   const [savedFeedback, setSavedFeedback] = useState(false);
@@ -766,6 +771,7 @@ export function AppProvider({ children }) {
       localStorage.removeItem("deduxi_cuota_sindical");
       localStorage.removeItem("deduxi_arca_fetched");
       localStorage.removeItem("deduxi_user_name");
+      localStorage.removeItem("deduxi_retenciones");
     }
 
     setArcaError(null);
