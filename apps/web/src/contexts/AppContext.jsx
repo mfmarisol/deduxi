@@ -737,7 +737,14 @@ export function AppProvider({ children }) {
   const monthlySaving = ahorroCalc.ahorro;
 
   // Detect if user's salary is below the Ganancias threshold
-  const noAlcanzadoPorGanancias = sueldoBruto > 0 && sueldoBruto < gananciasConfig2026.pisoMensualBruto;
+  // The threshold depends on family dependents (cargas de familia)
+  const cargasFamiliaMensualDeduccion = cargasFamiliaMensual || 0;
+  const pisoPersonalizado = (() => {
+    // Base piso = (GNI + Deducción Especial + cargas familia anualizadas) / 12 / (1 - aportes)
+    const cargasAnuales = cargasFamiliaMensualDeduccion * 12;
+    return (gananciasConfig2026.gniAnual + gananciasConfig2026.deduccionEspecialAnual + cargasAnuales) / 12 / (1 - gananciasConfig2026.aportesRate);
+  })();
+  const noAlcanzadoPorGanancias = sueldoBruto > 0 && sueldoBruto < pisoPersonalizado;
 
   /** Clear ALL user-specific data from state and localStorage */
   const clearAllUserData = () => {
@@ -1343,7 +1350,7 @@ export function AppProvider({ children }) {
     pluriempleo, setPluriempleo,
     alquilerData, setAlquilerData, alquilerDeduccionMensual,
     cargasFamiliaMensual, totalDeduccionesMensual, ahorroCalc, noAlcanzadoPorGanancias,
-    gananciasConfig: gananciasConfig2026,
+    gananciasConfig: gananciasConfig2026, pisoPersonalizado,
     currentPeriodo, currentPeriodoCode,
   };
 

@@ -178,7 +178,7 @@ export default function AppScreen() {
                   <div>
                     <p style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>Tu sueldo no está alcanzado por Ganancias</p>
                     <p style={{ fontSize: 11, color: "#78350f", lineHeight: 1.5 }}>
-                      Tu sueldo bruto de <strong>{fmt(sueldoBruto)}</strong> está por debajo del piso de <strong>{fmt(Math.round(ctx.gananciasConfig?.pisoMensualBruto || 3000000))}</strong>/mes para tributar Ganancias 4ta categoría.
+                      Tu sueldo bruto de <strong>{fmt(sueldoBruto)}</strong> está por debajo del piso de <strong>{fmt(Math.round(ctx.pisoPersonalizado || 3000000))}</strong>/mes para tributar Ganancias 4ta categoría{cargasFamiliaMensual > 0 ? " (considerando tus cargas de familia)" : ""}.
                       No necesitás presentar deducciones en SiRADIG.
                     </p>
                     <p style={{ fontSize: 9, color: "#a16207", marginTop: 6 }}>Si tu sueldo aumenta y supera el piso, Deduxi te va a ayudar a declarar tus deducciones.</p>
