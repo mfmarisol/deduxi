@@ -89,13 +89,19 @@ export async function fetchMirequaPercepciones(
         const svcUrl = ((ssoResult as any).url as string) || "https://mirequa-web.arca.gob.ar";
 
         await page.goto("about:blank");
-        await page.setContent(
-          `<html><body><form id="f" method="POST" action="${svcUrl}"><input name="token" value="${token}"><input name="sign" value="${sign}"></form></body></html>`,
-        );
-        await Promise.all([
-          page.evaluate(() => (document.getElementById("f") as HTMLFormElement).submit()),
-          page.waitForNavigation({ waitUntil: "networkidle", timeout: 25000 }).catch(() => {}),
-        ]);
+        // Use DOM API to avoid HTML injection from token/sign values
+        await page.evaluate(({ svcUrl, token, sign }) => {
+          const f = document.createElement("form");
+          f.method = "POST";
+          f.action = svcUrl;
+          const iToken = document.createElement("input"); iToken.name = "token"; iToken.value = token; f.appendChild(iToken);
+          const iSign = document.createElement("input"); iSign.name = "sign"; iSign.value = sign; f.appendChild(iSign);
+          document.body.appendChild(f);
+          f.submit();
+        }, { svcUrl, token, sign });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 25000 }).catch((e) => {
+          debug.push(`SSO POST nav error: ${e.message}`);
+        });
         await page.waitForTimeout(3000);
         debug.push(`After SSO POST: ${page.url()}`);
       } else {
@@ -226,7 +232,7 @@ export async function fetchMirequaPercepciones(
         if (!headerRow) continue;
 
         const headers = Array.from(headerRow.querySelectorAll("th")).map(
-          th => th.textContent?.trim().toLowerCase() || ""
+          th => (th.textContent?.trim().toLowerCase() || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
         );
 
         // Verify this is the retenciones table
@@ -293,7 +299,7 @@ export async function fetchMirequaPercepciones(
             const headerRow = table.querySelector("thead tr");
             if (!headerRow) continue;
             const headers = Array.from(headerRow.querySelectorAll("th")).map(
-              th => th.textContent?.trim().toLowerCase() || ""
+              th => (th.textContent?.trim().toLowerCase() || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
             );
             if (!headers.some(h => /r[eé]gimen/i.test(h))) continue;
             const bodyRows = table.querySelectorAll("tbody tr");
@@ -324,12 +330,12 @@ export async function fetchMirequaPercepciones(
       return {
         cuitAgente: row["cuit agente de ret. o per."] || row["cuit agente"] || row["cuit"] || "",
         impuesto: parseInt(row["impuesto"] || "0"),
-        regimen: parseInt(row["régimen"] || row["regimen"] || "0"),
-        fechaRetencion: row["fecha retención o percepción"] || row["fecha retencion o percepcion"] || row["fecha"] || "",
-        nroCertificado: row["número de certificado"] || row["numero de certificado"] || row["nro certificado"] || "",
-        tipoOperacion: row["tipo de operación"] || row["tipo de operacion"] || row["tipo"] || "",
+        regimen: parseInt(row["regimen"] || "0"),
+        fechaRetencion: row["fecha retencion o percepcion"] || row["fecha"] || "",
+        nroCertificado: row["numero de certificado"] || row["nro certificado"] || "",
+        tipoOperacion: row["tipo de operacion"] || row["tipo"] || "",
         importe: parseFloat(importeStr) || 0,
-        nroComprobante: row["número de comprobante"] || row["numero de comprobante"] || "",
+        nroComprobante: row["numero de comprobante"] || "",
         fechaComprobante: row["fecha de comprobante"] || "",
         tipoComprobante: row["tipo de comprobante"] || "",
       };
@@ -351,7 +357,9 @@ export async function fetchMirequaPercepciones(
  * (regímenes 591-600) for the 35% recovery via SiRADIG.
  */
 export function filterPercepciones35(retenciones: MirequaRetencion[]): MirequaRetencion[] {
-  return retenciones.filter(r =>
-    r.regimen >= 591 && r.regimen <= 600 && r.tipoOperacion === "PERCEPCION"
-  );
+  return retenciones.filter(r => {
+    // Normalize tipoOperacion: strip accents and compare case-insensitively
+    const tipo = (r.tipoOperacion || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return r.regimen >= 591 && r.regimen <= 600 && tipo.includes("PERCEPCION");
+  });
 }

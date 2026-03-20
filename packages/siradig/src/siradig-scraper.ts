@@ -96,6 +96,8 @@ function mapConceptToCategory(concept: string): string {
 
 function parseArgNumber(text: string): number {
   // "1.234.567,89" → 1234567.89
+  // Guard: skip CUIT patterns (XX-XXXXXXXX-X) which would parse as garbage
+  if (/\d{2}-?\d{7,8}-?\d/.test(text.trim())) return 0;
   const cleaned = text.replace(/[^0-9.,-]/g, "").replace(/\./g, "").replace(",", ".");
   return parseFloat(cleaned) || 0;
 }
@@ -225,7 +227,9 @@ async function postSiradigSSO(
       },
       { url: svcUrl, t: token, s: sign },
     ),
-    page.waitForNavigation({ waitUntil: "networkidle", timeout: 25000 }).catch(() => {}),
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 25000 }).catch((e) => {
+      debug.push(`SSO POST nav warning: ${e.message}`);
+    }),
   ]);
   await page.waitForTimeout(3000);
   debug.push(`After POST: ${page.url()}`);
@@ -249,7 +253,9 @@ async function postSiradigSSO(
     );
     await Promise.all([
       page.evaluate(() => (document.getElementById("f") as HTMLFormElement).submit()),
-      page.waitForNavigation({ waitUntil: "networkidle", timeout: 25000 }).catch(() => {}),
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 25000 }).catch((e) => {
+        debug.push(`SSO retry nav warning: ${e.message}`);
+      }),
     ]);
     await page.waitForTimeout(3000);
     debug.push(`After blank retry: ${page.url()}`);
@@ -309,7 +315,7 @@ export async function fetchSiradigPresentaciones(
       const results: any[] = [];
       const tables = document.querySelectorAll("table");
       for (const table of tables) {
-        const rows = table.querySelectorAll("tbody tr, tr");
+        const rows = table.querySelectorAll(":scope > tbody > tr, :scope > tr");
         for (const row of rows) {
           const cells = Array.from(row.querySelectorAll("td, th")).map(c => c.textContent?.trim() || "");
           if (cells.length >= 2 && cells.some(c => c.length > 0)) results.push(cells);
@@ -614,7 +620,7 @@ export async function fetchSiradigDetail(
       const bodyText = document.body?.innerText || "";
       const tables = Array.from(document.querySelectorAll("table")).map(t => {
         const headers = Array.from(t.querySelectorAll("thead th, tr:first-child th")).map(h => (h.textContent || "").trim());
-        const rows = Array.from(t.querySelectorAll("tbody tr, tr")).slice(0, 50).map(r =>
+        const rows = Array.from(t.querySelectorAll(":scope > tbody > tr, :scope > tr")).slice(0, 50).map(r =>
           Array.from(r.querySelectorAll("td")).map(c => (c.textContent || "").trim())
         ).filter(r => r.length > 0 && r.some(c => c.length > 0));
         return { headers, rows };
@@ -741,7 +747,7 @@ export async function fetchSiradigDetail(
           const tabContent = await page.evaluate(() => {
             const tables = Array.from(document.querySelectorAll("table")).map(t => {
               const headers = Array.from(t.querySelectorAll("thead th, tr:first-child th")).map(h => (h.textContent || "").trim());
-              const rows = Array.from(t.querySelectorAll("tbody tr, tr")).slice(0, 50).map(r =>
+              const rows = Array.from(t.querySelectorAll(":scope > tbody > tr, :scope > tr")).slice(0, 50).map(r =>
                 Array.from(r.querySelectorAll("td")).map(c => (c.textContent || "").trim())
               ).filter(r => r.length > 0 && r.some(c => c.length > 0));
               return { headers, rows };
