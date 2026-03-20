@@ -500,6 +500,7 @@ export async function fetchAportesEnLinea(
           contribucionPatronal: string;
         }>;
         bodyPreview: string;
+        debug: string[];
       } = {
         empleador: "",
         cuitEmpleador: "",
@@ -507,6 +508,7 @@ export async function fetchAportesEnLinea(
         empleadoCuil: "",
         periodos: [],
         bodyPreview: "",
+        debug: [],
       };
 
       const bodyText = document.body?.innerText ?? "";
@@ -563,8 +565,11 @@ export async function fetchAportesEnLinea(
       };
 
       const tables = document.querySelectorAll("table");
-      for (const table of tables) {
+      result.debug.push(`Found ${tables.length} tables on page`);
+      for (let tIdx = 0; tIdx < tables.length; tIdx++) {
+        const table = tables[tIdx];
         const allRows = Array.from(table.querySelectorAll("tr"));
+        result.debug.push(`Table[${tIdx}]: ${allRows.length} rows, first row text: "${(allRows[0]?.textContent ?? "").trim().substring(0, 100)}"`);
         if (allRows.length < 3) continue; // Need at least 2 header rows + 1 data row
 
         // Identify the table by header content
@@ -576,7 +581,11 @@ export async function fetchAportesEnLinea(
           /per[ií]odo/i.test(headerText) &&
           /remunerac/i.test(headerText) &&
           /aporte/i.test(headerText);
-        if (!isPeriodTable) continue;
+        if (!isPeriodTable) {
+          result.debug.push(`Table[${tIdx}]: not period table (header: "${headerText.trim().substring(0, 120)}")`);
+          continue;
+        }
+        result.debug.push(`Table[${tIdx}]: ✓ PERIOD TABLE FOUND`);
 
         // Determine where data rows start (skip the 2 header rows)
         let dataStart = 2;
@@ -587,46 +596,96 @@ export async function fetchAportesEnLinea(
             dataStart = 3;
           }
         }
+        result.debug.push(`Data starts at row ${dataStart}, total rows: ${allRows.length}`);
 
         for (let i = dataStart; i < allRows.length; i++) {
-          const cells = Array.from(allRows[i].querySelectorAll("td"));
-          if (cells.length < 6) continue;
+          // IMPORTANT: ARCA uses BOTH <th> and <td> in data rows
+          // The period is often in a <th>, salary data in <td>s
+          const allCells = Array.from(allRows[i].querySelectorAll("td, th"));
+          const tdCells = Array.from(allRows[i].querySelectorAll("td"));
 
-          const cellTexts = cells.map((c) => (c.textContent ?? "").trim());
+          // Log first 4 data rows for debugging
+          if (i < dataStart + 4) {
+            result.debug.push(`Row[${i}]: ${allCells.length} all cells (${tdCells.length} td) → ${allCells.map((c, ci) => `[${ci}:${c.tagName}]="${(c.textContent ?? "").trim().substring(0, 35)}"`).join(", ")}`);
+          }
 
-          // First cell should contain a period in mm/yyyy format
-          const periodoMatch = cellTexts[0].match(/(\d{2}\/\d{4})/);
-          if (!periodoMatch) continue;
+          // Need at least 4 cells to be a valid data row
+          if (allCells.length < 4) continue;
 
-          // Real ARCA table has 12 TDs per row:
-          // TD[0]: periodo display, TD[1]: hidden inputs (skip),
-          // TD[2]: remuneración bruta, TD[3]: empty,
-          // TD[4]: seg social declarado, TD[5]: seg social depositado,
-          // TD[6]: empty, TD[7]: obra social declarado,
-          // TD[8]: obra social depositado, TD[9]: obra social destino,
-          // TD[10]: empty, TD[11]: PAGO status
-          const incluyeSAC = (cellTexts[2] ?? "").includes("(*)");
+          const allTexts = allCells.map((c) => (c.textContent ?? "").trim());
+          const fullRowText = allTexts.join(" ");
+
+          // Find period (mm/yyyy) anywhere in the row cells
+          let periodo = "";
+          for (const txt of allTexts) {
+            const m = txt.match(/(\d{2}\/\d{4})/);
+            if (m) { periodo = m[1]; break; }
+          }
+          if (!periodo) continue;
+
+          // Check for SAC marker
+          const incluyeSAC = /sueldo anual complementario|\(\*\)|SAC/i.test(fullRowText);
+
+          // Extract all numeric values from the row (skip the period cell)
+          // Order in ARCA: remuneración bruta, seg social declarado, seg social depositado,
+          //                 obra social declarado, obra social depositado
+          const numericValues: number[] = [];
+          const nonNumericTexts: string[] = [];
+          for (const txt of allTexts) {
+            if (/\d{2}\/\d{4}/.test(txt)) continue; // skip period
+            if (/sueldo anual|complementario/i.test(txt)) continue; // skip SAC note
+            const cleaned = txt.replace(/[^0-9.,-]/g, "").replace(/\./g, "").replace(",", ".");
+            const n = parseFloat(cleaned);
+            if (Number.isFinite(n) && n > 0) {
+              numericValues.push(n);
+            } else if (txt.length > 2 && !/^\s*$/.test(txt)) {
+              nonNumericTexts.push(txt);
+            }
+          }
+
+          if (numericValues.length === 0) continue;
+
+          // Map numeric values by position:
+          // [0] = remuneración bruta
+          // [1] = seg social declarado, [2] = seg social depositado
+          // [3] = obra social declarado, [4] = obra social depositado
+          const remuBruta = numericValues[0] ?? 0;
+          const segSocDec = numericValues[1] ?? 0;
+          const segSocDep = numericValues[2] ?? 0;
+          const obraSocDec = numericValues[3] ?? 0;
+          const obraSocDep = numericValues[4] ?? 0;
+
+          // Obra social destino and PAGO status from non-numeric texts
+          const obraSocialDestino = nonNumericTexts.find(t => /social|coop|salud|osde|swiss|galeno|medic/i.test(t)) || nonNumericTexts[0] || "";
+          const pagoStatus = nonNumericTexts.find(t => /pago|impago|parcial|sin info/i.test(t)) || "";
 
           result.periodos.push({
-            periodo: periodoMatch[1],
-            remuneracionBruta: parseNum(cellTexts[2] ?? "0"),
+            periodo,
+            remuneracionBruta: remuBruta,
             incluyeSAC,
-            aportesSegSocialDeclarado: parseNum(cellTexts[4] ?? "0"),
-            aportesSegSocialDepositado: parseNum(cellTexts[5] ?? "0"),
-            aportesObraSocialDeclarado: parseNum(cellTexts[7] ?? "0"),
-            aportesObraSocialDepositado: parseNum(cellTexts[8] ?? "0"),
-            obraSocialDestino: cellTexts[9] ?? "",
-            contribucionPatronal: (cellTexts[11] ?? "").toUpperCase() || "SIN INFORMACIÓN",
+            aportesSegSocialDeclarado: segSocDec,
+            aportesSegSocialDepositado: segSocDep,
+            aportesObraSocialDeclarado: obraSocDec,
+            aportesObraSocialDepositado: obraSocDep,
+            obraSocialDestino,
+            contribucionPatronal: pagoStatus.toUpperCase() || "SIN INFORMACIÓN",
           });
         }
 
         // Found the right table, stop looking
-        if (result.periodos.length > 0) break;
+        if (result.periodos.length > 0) {
+          result.debug.push(`✓ Parsed ${result.periodos.length} periods successfully`);
+          break;
+        }
       }
 
       return result;
     });
 
+    // Merge in-browser debug logs
+    if (parseResult.debug?.length > 0) {
+      debug.push(...parseResult.debug);
+    }
     debug.push(
       `Employer: "${parseResult.empleador}" CUIT: ${parseResult.cuitEmpleador}`,
     );

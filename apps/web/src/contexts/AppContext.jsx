@@ -37,6 +37,25 @@ export const useApp = () => {
  * Topes anuales de deducción — Ganancias 2026 (primer semestre).
  * Se actualizan semestralmente por ARCA según inflación (art. 25 Ley 27.743).
  */
+/**
+ * Mínimo no imponible y deducción especial — Art. 23 y 24, Ley 20.628
+ * Valores 2026 primer semestre (actualizables por ARCA/RG vigente).
+ * El "piso" para pagar Ganancias = (GNI + deducción especial) / 12 / 0.83
+ * Si el sueldo bruto mensual es menor a este piso, NO paga Ganancias.
+ */
+export const gananciasConfig2026 = {
+  gniAnual: 5151802.50,           // Ganancia No Imponible anual
+  deduccionEspecialAnual: 24728649.96, // Deducción especial 4ta categoría
+  aportesRate: 0.17,              // Aportes obligatorios (~17% del bruto)
+  // Piso mensual bruto para pagar Ganancias (calculado):
+  get pisoMensualBruto() {
+    return (this.gniAnual + this.deduccionEspecialAnual) / 12 / (1 - this.aportesRate);
+  },
+  // Fuente y fecha de actualización
+  fuente: "RG ARCA - Valores primer semestre 2026",
+  ultimaActualizacion: "2026-01-01",
+};
+
 export const topesAnuales2026 = {
   // GNI 2026 S1 = $5,151,802.50 anual
   servicio_domestico:   { tope: 5151802.50, tipo: "anual", desc: "Tope = Ganancia No Imponible (GNI)" },
@@ -406,8 +425,21 @@ export function AppProvider({ children }) {
   const [ticketEdits, setTicketEdits] = useState({});
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [confirmingTicketId, setConfirmingTicketId] = useState(null);
-  const [tickets, setTickets] = useState([]);
-  const [arcaFetched, setArcaFetched] = useState(false);
+  // Helper: read persisted value only if a CUIT session exists
+  const _load = (key, fallback) => {
+    if (!localStorage.getItem("deduxi_cuit")) return fallback;
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; }
+  };
+  const _loadNum = (key) => {
+    if (!localStorage.getItem("deduxi_cuit")) return 0;
+    return parseFloat(localStorage.getItem(key)) || 0;
+  };
+
+  const [tickets, setTickets] = useState(() => {
+    const t = _load("deduxi_tickets", []);
+    return Array.isArray(t) ? t.filter(tk => tk.source !== "casas-particulares") : [];
+  });
+  const [arcaFetched, setArcaFetched] = useState(() => localStorage.getItem("deduxi_arca_fetched") === "1");
   const [addedTickets, setAddedTickets] = useState([]);
   const [showAddTicket, setShowAddTicket] = useState(false);
   const [openDatosSection, setOpenDatosSection] = useState(null);
@@ -420,7 +452,16 @@ export function AppProvider({ children }) {
 
   /* Cargas de familia (Art. 23 inc. b) — declaración manual */
   // Each entry: { tipo: "conyuge"|"hijo"|"hijo_incapacitado", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 }
-  const [cargasFamilia, setCargasFamilia] = useState([]);
+  const [cargasFamilia, setCargasFamilia] = useState(() => {
+    const c = _load("deduxi_cargas_familia", []);
+    if (Array.isArray(c)) return c;
+    // Legacy migration
+    const arr = [];
+    if (c.conyuge) arr.push({ tipo: "conyuge", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+    for (let i = 0; i < (c.hijos || 0); i++) arr.push({ tipo: "hijo", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+    for (let i = 0; i < (c.hijosIncapacitados || 0); i++) arr.push({ tipo: "hijo_incapacitado", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
+    return arr;
+  });
   // Legacy compat getters
   const cargasConyuge = cargasFamilia.some(c => c.tipo === "conyuge");
   const setCargasConyuge = (val) => {
@@ -445,27 +486,20 @@ export function AppProvider({ children }) {
   };
 
   /* Cuota sindical (Art. 82 inc. a) — monto mensual del recibo */
-  const [cuotaSindical, setCuotaSindical] = useState(0);
+  const [cuotaSindical, setCuotaSindical] = useState(() => _loadNum("deduxi_cuota_sindical"));
   const [cuotaSindicalDesde, setCuotaSindicalDesde] = useState(1);
   const [cuotaSindicalHasta, setCuotaSindicalHasta] = useState(12);
 
   /* Sueldo bruto mensual — para estimar tasa marginal real */
-  const [sueldoBruto, setSueldoBruto] = useState(0);
+  const [sueldoBruto, setSueldoBruto] = useState(() => _loadNum("deduxi_sueldo_bruto"));
 
   /* Pluriempleo (Art. 14 RG 4003) — ingresos de otros empleadores */
-  const [pluriempleo, setPluriempleo] = useState([]);
+  const [pluriempleo, setPluriempleo] = useState(() => _load("deduxi_pluriempleo", []));
   // Each entry: { cuitEmpleador, razonSocial, sueldoBrutoMensual, aporteSegSocial, aporteObraSocial, aporteSindical, retencionGanancias }
 
   /* Alquiler vivienda (RG 4003) — datos del contrato */
-  const [alquilerData, setAlquilerData] = useState({
-    activo: false,
-    cuitLocador: "",
-    nombreLocador: "",
-    montoMensual: 0,
-    tipoContrato: "vivienda", // vivienda habitual
-    mesDesde: 1,
-    mesHasta: 12,
-  });
+  const defaultAlquiler = { activo: false, cuitLocador: "", nombreLocador: "", montoMensual: 0, tipoContrato: "vivienda", mesDesde: 1, mesHasta: 12 };
+  const [alquilerData, setAlquilerData] = useState(() => _load("deduxi_alquiler", defaultAlquiler));
 
   /* Casas Particulares (domestic workers) */
   const [casasWorkers, setCasasWorkers] = useState([]);
@@ -479,8 +513,10 @@ export function AppProvider({ children }) {
   // Each: { cuil, montoMensual, mesDesde, mesHasta }
 
   /* Retenciones, percepciones y pagos a cuenta (Sección 4 F.572) */
-  const [retenciones, setRetenciones] = useState([]);
+  const [retenciones, setRetenciones] = useState(() => _load("deduxi_retenciones", []));
   // Each: { tipo: "imp_cheque"|"percep_aduana"|"pago_cuenta_3819"|"pago_cuenta_5617"|"autoret_5683"|"otra", descripcion, cuitAgente, monto, periodo }
+  const [retencionesLoading, setRetencionesLoading] = useState(false);
+  const [retencionesFetched, setRetencionesFetched] = useState(false);
 
   /* Aportes en Línea (payroll data: sueldo bruto, empleadores) */
   const [aportesEmpleador, setAportesEmpleador] = useState("");
@@ -494,6 +530,10 @@ export function AppProvider({ children }) {
   const [siradigLoading, setSiradigLoading] = useState(false);
   const [siradigFetched, setSiradigFetched] = useState(false);
   const [siradigDebug, setSiradigDebug] = useState([]);
+  /* SiRADIG presentations history (list of submitted F.572) */
+  const [siradigPresentaciones, setSiradigPresentaciones] = useState([]);
+  const [siradigPresLoading, setSiradigPresLoading] = useState(false);
+  const [siradigPresFetched, setSiradigPresFetched] = useState(false);
 
   /* User name from ARCA (set after aportes fetch) */
   const [arcaUserName, setArcaUserName] = useState(localStorage.getItem("deduxi_user_name") || "");
@@ -542,42 +582,12 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
-  /* persist session in localStorage so refresh doesn't log out */
+  /* Restore session screen from localStorage (data is loaded via lazy initializers above) */
   useEffect(() => {
     const saved = localStorage.getItem("deduxi_screen");
     if (saved === "app" || saved === "connect-arca") setScreen(saved);
     const savedCuit = localStorage.getItem("deduxi_cuit");
     if (savedCuit && saved === "app") setCuit(savedCuit);
-    const savedTickets = localStorage.getItem("deduxi_tickets");
-    if (savedTickets) { try { const t = JSON.parse(savedTickets); if (Array.isArray(t)) { const filtered = t.filter(tk => tk.source !== "casas-particulares"); setTickets(filtered); if (filtered.length > 0) setArcaFetched(true); } } catch(e) {} }
-    const savedArcaFetched = localStorage.getItem("deduxi_arca_fetched");
-    if (savedArcaFetched === "1") setArcaFetched(true);
-    // Restore cargas de familia + datos recibo
-    try {
-      const savedCargas = localStorage.getItem("deduxi_cargas_familia");
-      if (savedCargas) {
-        const c = JSON.parse(savedCargas);
-        // Support new format (array) and legacy format ({conyuge, hijos, hijosIncapacitados})
-        if (Array.isArray(c)) { setCargasFamilia(c); }
-        else { /* legacy migration */
-          const arr = [];
-          if (c.conyuge) arr.push({ tipo: "conyuge", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
-          for (let i = 0; i < (c.hijos || 0); i++) arr.push({ tipo: "hijo", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
-          for (let i = 0; i < (c.hijosIncapacitados || 0); i++) arr.push({ tipo: "hijo_incapacitado", cuil: "", porcentaje: 100, mesDesde: 1, mesHasta: 12 });
-          setCargasFamilia(arr);
-        }
-      }
-      const savedSueldo = localStorage.getItem("deduxi_sueldo_bruto");
-      if (savedSueldo) setSueldoBruto(parseFloat(savedSueldo) || 0);
-      const savedSindical = localStorage.getItem("deduxi_cuota_sindical");
-      if (savedSindical) setCuotaSindical(parseFloat(savedSindical) || 0);
-      const savedPluriempleo = localStorage.getItem("deduxi_pluriempleo");
-      if (savedPluriempleo) setPluriempleo(JSON.parse(savedPluriempleo) || []);
-      const savedAlquiler = localStorage.getItem("deduxi_alquiler");
-      if (savedAlquiler) setAlquilerData(JSON.parse(savedAlquiler));
-      const savedRetenciones = localStorage.getItem("deduxi_retenciones");
-      if (savedRetenciones) setRetenciones(JSON.parse(savedRetenciones) || []);
-    } catch(e) {}
   }, []);
   useEffect(() => {
     localStorage.setItem("deduxi_screen", screen);
@@ -694,9 +704,9 @@ export function AppProvider({ children }) {
       return { ahorro: Math.round(totalDeduccionesMensual * 0.27), tasaEfectiva: 0.27, metodo: "estimado" };
     }
     // Ganancia neta mensual simplificada: bruto - 17% aportes obligatorios - MNI mensual
-    const aportes = sueldoBruto * 0.17;
-    const mniMensual = 5151802.50 / 12; // GNI anual / 12
-    const deduccionEspecial = 24728649.96 / 12; // Deducción especial 4ta cat / 12
+    const aportes = sueldoBruto * gananciasConfig2026.aportesRate;
+    const mniMensual = gananciasConfig2026.gniAnual / 12;
+    const deduccionEspecial = gananciasConfig2026.deduccionEspecialAnual / 12;
     const gananciaNetaSin = Math.max(0, sueldoBruto - aportes - mniMensual - deduccionEspecial);
     const gananciaNetaCon = Math.max(0, gananciaNetaSin - totalDeduccionesMensual);
     // Calcular impuesto con y sin deducciones usando escala
@@ -726,15 +736,34 @@ export function AppProvider({ children }) {
   const ahorroCalc = calcularAhorroReal();
   const monthlySaving = ahorroCalc.ahorro;
 
+  // Detect if user's salary is below the Ganancias threshold
+  const noAlcanzadoPorGanancias = sueldoBruto > 0 && sueldoBruto < gananciasConfig2026.pisoMensualBruto;
+
+  /** Clear ALL user-specific data from state and localStorage */
+  const clearAllUserData = () => {
+    setTickets([]); setCargasFamilia([]); setPluriempleo([]);
+    setAlquilerData(defaultAlquiler);
+    setSueldoBruto(0); setCuotaSindical(0); setRetenciones([]);
+    setCasasManual([]); setSiradigDetail(null); setSiradigFetched(false); setSiradigPresentaciones([]); setSiradigPresFetched(false);
+    setRetencionesFetched(false); setArcaFetched(false); setAportesFetched(false);
+    setCasasFetched(false); setCasasWorkers([]); setCasasPayments([]); setCasasTotalDeducible(0);
+    setAportesPeriodos([]); setAportesEmpleador(""); setAportesCuitEmpleador("");
+    setArcaUserName(""); setStep(0);
+    // Clear localStorage
+    ["deduxi_tickets", "deduxi_cargas_familia", "deduxi_pluriempleo", "deduxi_alquiler",
+     "deduxi_sueldo_bruto", "deduxi_cuota_sindical", "deduxi_arca_fetched",
+     "deduxi_user_name", "deduxi_retenciones", "deduxi_cuit"
+    ].forEach(k => localStorage.removeItem(k));
+  };
+
   const handleGoogleLogin = () => {
     setLoginLoading(true); setLoginMethod("google");
-    setTimeout(() => { setLoginLoading(false); setCuit(""); setClaveFiscal(""); setArcaPhase("cuit"); setArcaError(null); setArcaErrMsg(""); setScreen("connect-arca"); }, 600);
+    setTimeout(() => { setLoginLoading(false); clearAllUserData(); setCuit(""); setClaveFiscal(""); setArcaPhase("cuit"); setArcaError(null); setArcaErrMsg(""); setScreen("connect-arca"); }, 600);
   };
   const handleEmailLogin = (e) => {
     e.preventDefault(); if (!loginEmail) return;
     setLoginLoading(true); setLoginMethod("email");
-    // Skip email verification in current version, go directly to ARCA
-    setTimeout(() => { setLoginLoading(false); setCuit(""); setClaveFiscal(""); setArcaPhase("cuit"); setArcaError(null); setArcaErrMsg(""); setScreen("connect-arca"); }, 600);
+    setTimeout(() => { setLoginLoading(false); clearAllUserData(); setCuit(""); setClaveFiscal(""); setArcaPhase("cuit"); setArcaError(null); setArcaErrMsg(""); setScreen("connect-arca"); }, 600);
   };
 
   /* Phase 1: submit CUIT -> get CAPTCHA from real ARCA */
@@ -746,32 +775,7 @@ export function AppProvider({ children }) {
     const prevCuit = localStorage.getItem("deduxi_cuit");
     if (prevCuit && prevCuit.replace(/\D/g, "") !== cuitDigits) {
       console.log(`[ARCA] CUIT changed from ${prevCuit} to ${cuitDigits}, clearing previous data`);
-      // Clear all user-specific state
-      setTickets([]);
-      setCargasFamilia([]);
-      setPluriempleo([]);
-      setAlquilerData({ activo: false, cuitLocador: "", nombreLocador: "", montoMensual: 0, tipoContrato: "vivienda", mesDesde: 1, mesHasta: 12 });
-      setSueldoBruto(0);
-      setCuotaSindical(0);
-      setRetenciones([]);
-      setCasasManual([]);
-      setSiradigDetail(null);
-      setSiradigFetched(false);
-      setArcaFetched(false);
-      setAportesFetched(false);
-      setCasasFetched(false);
-      setCasasWorkers([]); setCasasPayments([]); setCasasTotalDeducible(0);
-      setAportesPeriodos([]); setAportesEmpleador(""); setAportesCuitEmpleador("");
-      // Clear localStorage
-      localStorage.removeItem("deduxi_tickets");
-      localStorage.removeItem("deduxi_cargas_familia");
-      localStorage.removeItem("deduxi_pluriempleo");
-      localStorage.removeItem("deduxi_alquiler");
-      localStorage.removeItem("deduxi_sueldo_bruto");
-      localStorage.removeItem("deduxi_cuota_sindical");
-      localStorage.removeItem("deduxi_arca_fetched");
-      localStorage.removeItem("deduxi_user_name");
-      localStorage.removeItem("deduxi_retenciones");
+      clearAllUserData();
     }
 
     setArcaError(null);
@@ -828,6 +832,7 @@ export function AppProvider({ children }) {
       if (data.ok) {
         setArcaConnected(true);
         setScreen("app");
+        setStep(0); // Always start at Inicio after login
         localStorage.setItem("deduxi_cuit", cuit);
         setClaveFiscal("");
 
@@ -854,19 +859,22 @@ export function AppProvider({ children }) {
         setArcaFetched(true);
         localStorage.setItem("deduxi_arca_fetched", "1");
 
-        // Fetch scrapers SEQUENTIALLY to avoid race conditions
-        // (both use portal API for token+sign, concurrent calls can conflict)
-        // Order: Aportes → Casas Particulares → SiRADIG Detail
-        fetchAportesEnLinea(captchaSessionId)
-          .catch(e => console.warn("[ARCA aportes-en-linea auto-fetch failed]", e.message))
-          .finally(() => {
-            fetchCasasParticulares(captchaSessionId)
-              .catch(e => console.warn("[ARCA casas-particulares auto-fetch failed]", e.message))
-              .finally(() => {
-                fetchSiradigDetail(captchaSessionId)
-                  .catch(e => console.warn("[ARCA siradig-detail auto-fetch failed]", e.message));
-              });
+        // Fetch all secondary scrapers IN PARALLEL — each uses its own
+        // extra page (createExtraPage on backend) so they don't conflict.
+        Promise.allSettled([
+          fetchAportesEnLinea(captchaSessionId),
+          fetchCasasParticulares(captchaSessionId),
+          fetchSiradigDetail(captchaSessionId),
+          fetchRetencionesArca(captchaSessionId),
+          fetchSiradigPresentaciones(captchaSessionId),
+        ]).then(results => {
+          results.forEach((r, i) => {
+            if (r.status === "rejected") {
+              const names = ["aportes", "casas", "siradig-detail", "retenciones"];
+              console.warn(`[ARCA ${names[i]} auto-fetch failed]`, r.reason?.message || r.reason);
+            }
           });
+        });
       } else {
         if (data.error === "captcha_incorrecto") {
           if (data.captcha) setCaptchaImage(data.captcha);
@@ -1174,6 +1182,61 @@ export function AppProvider({ children }) {
     }
   };
 
+  /* Fetch retenciones/percepciones from Mirequa (ARCA) */
+  const fetchRetencionesArca = async (arcaSessionId) => {
+    setRetencionesLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/arca/fetch-retenciones`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: arcaSessionId, cuit }),
+      });
+      const data = await res.json();
+      console.log("[ARCA retenciones/mirequa]", JSON.stringify(data).slice(0, 2000));
+      if (data.mirequaDebug) console.log("[ARCA mirequa debug]", data.mirequaDebug.join("\n"));
+
+      if (data.ok && data.percepciones35 && data.percepciones35.length > 0) {
+        // percepciones35 = retenciones at 35% rate (deductible from Ganancias)
+        const imported = data.percepciones35.map(r => ({
+          tipo: mapMirequaTipo(r.regimen || r.descripcion || ""),
+          descripcion: r.descripcion || r.regimen || "",
+          cuitAgente: r.cuitAgente || "",
+          monto: r.importe || 0,
+          periodo: r.fecha || "",
+          source: "mirequa",
+        }));
+        setRetenciones(prev => {
+          // Only auto-populate if user hasn't added manual entries
+          if (prev.length > 0 && prev.some(r => r.source !== "mirequa")) {
+            console.log("[Mirequa] Retenciones already have manual entries, skipping import");
+            return prev;
+          }
+          console.log(`[Mirequa] Imported ${imported.length} percepciones/retenciones`);
+          return imported;
+        });
+        setRetencionesFetched(true);
+      } else if (data.ok) {
+        console.log("[Mirequa] No percepciones al 35% found");
+        setRetencionesFetched(true);
+      }
+    } catch (e) {
+      console.error("[ARCA retenciones/mirequa error]", e.message);
+    } finally {
+      setRetencionesLoading(false);
+    }
+  };
+
+  // Helper: map Mirequa regimen to our internal tipo
+  const mapMirequaTipo = (regimen) => {
+    const lower = regimen.toLowerCase();
+    if (/cr[eé]dito|d[eé]bito|cheque/i.test(lower)) return "imp_cheque";
+    if (/aduana/i.test(lower)) return "percep_aduana";
+    if (/3819/i.test(lower)) return "pago_cuenta_3819";
+    if (/5617/i.test(lower)) return "pago_cuenta_5617";
+    if (/5683|autorret/i.test(lower)) return "autoret_5683";
+    return "otra";
+  };
+
   // Helper: map SiRADIG retención category to our internal tipo
   const mapRetencionTipo = (cat) => {
     const map = {
@@ -1186,6 +1249,30 @@ export function AppProvider({ children }) {
       percepciones_tarjeta: "otra",
     };
     return map[cat] || "otra";
+  };
+
+  /* Fetch list of SiRADIG presentations (F.572 history) */
+  const fetchSiradigPresentaciones = async (arcaSessionId) => {
+    setSiradigPresLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/arca/fetch-siradig`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: arcaSessionId, cuit }),
+      });
+      const data = await res.json();
+      console.log("[ARCA siradig-presentaciones]", JSON.stringify(data).slice(0, 2000));
+      if (data.siradigDebug) console.log("[ARCA siradig pres debug]", data.siradigDebug.join("\n"));
+      if (data.ok && data.presentaciones) {
+        setSiradigPresentaciones(data.presentaciones);
+        setSiradigPresFetched(true);
+        console.log(`[SiRADIG] Found ${data.presentaciones.length} presentaciones`);
+      }
+    } catch (e) {
+      console.error("[ARCA siradig-presentaciones error]", e.message);
+    } finally {
+      setSiradigPresLoading(false);
+    }
   };
 
   const handleArcaConnect = handleArcaStart;
@@ -1242,11 +1329,12 @@ export function AppProvider({ children }) {
     arcaDebugShot, setArcaDebugShot, arcaDebugInfo, setArcaDebugInfo,
     handleGoogleLogin, handleEmailLogin, handleArcaStart, handleArcaComplete,
     handleRefreshCaptcha, handleArcaConnect, handleUpdateClave, handlePresent, handleRectificar,
-    fetchComprobantesFromArca, fetchCasasParticulares, fetchSiradigDetail, classifyTicket,
+    fetchComprobantesFromArca, fetchCasasParticulares, fetchSiradigDetail, fetchRetencionesArca, classifyTicket,
     casasWorkers, casasPayments, casasTotalDeducible, casasLoading, casasFetched, casasDebug, casasManual, setCasasManual,
-    retenciones, setRetenciones,
+    retenciones, setRetenciones, retencionesLoading, retencionesFetched,
     aportesEmpleador, aportesCuitEmpleador, aportesPeriodos, aportesLoading, aportesFetched,
     siradigDetail, siradigLoading, siradigFetched, siradigDebug,
+    siradigPresentaciones, siradigPresLoading, siradigPresFetched, fetchSiradigPresentaciones,
     cargasFamilia, setCargasFamilia,
     cargasConyuge, setCargasConyuge, cargasHijos, setCargasHijos,
     cargasHijosIncapacitados, setCargasHijosIncapacitados,
@@ -1254,7 +1342,8 @@ export function AppProvider({ children }) {
     sueldoBruto, setSueldoBruto,
     pluriempleo, setPluriempleo,
     alquilerData, setAlquilerData, alquilerDeduccionMensual,
-    cargasFamiliaMensual, totalDeduccionesMensual, ahorroCalc,
+    cargasFamiliaMensual, totalDeduccionesMensual, ahorroCalc, noAlcanzadoPorGanancias,
+    gananciasConfig: gananciasConfig2026,
     currentPeriodo, currentPeriodoCode,
   };
 

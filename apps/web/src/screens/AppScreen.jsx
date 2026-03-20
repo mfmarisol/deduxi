@@ -155,6 +155,38 @@ export default function AppScreen() {
             </div>
 
 
+            {/* Loading banner — shows while ARCA scrapers are running */}
+            {(ctx.aportesLoading || casasLoading || siradigLoading || ctx.retencionesLoading) && (
+              <div className="ai-pulse" style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", border: "1px solid #ddd6fe", borderRadius: 12, padding: "10px 16px", marginBottom: 12 }}>
+                <Spinner size={14} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>
+                  Importando datos de ARCA... {[
+                    ctx.aportesLoading && "sueldo",
+                    casasLoading && "servicio doméstico",
+                    siradigLoading && "F.572 anterior",
+                    ctx.retencionesLoading && "retenciones",
+                  ].filter(Boolean).join(", ")}
+                </span>
+              </div>
+            )}
+
+            {/* Banner: sueldo no alcanzado por Ganancias */}
+            {ctx.noAlcanzadoPorGanancias && (
+              <div style={{ ...cardStyle, marginBottom: 12, padding: "14px 16px", background: "#fffbeb", border: "1.5px solid #fbbf24", borderRadius: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>ℹ️</span>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>Tu sueldo no está alcanzado por Ganancias</p>
+                    <p style={{ fontSize: 11, color: "#78350f", lineHeight: 1.5 }}>
+                      Tu sueldo bruto de <strong>{fmt(sueldoBruto)}</strong> está por debajo del piso de <strong>{fmt(Math.round(ctx.gananciasConfig?.pisoMensualBruto || 3000000))}</strong>/mes para tributar Ganancias 4ta categoría.
+                      No necesitás presentar deducciones en SiRADIG.
+                    </p>
+                    <p style={{ fontSize: 9, color: "#a16207", marginTop: 6 }}>Si tu sueldo aumenta y supera el piso, Deduxi te va a ayudar a declarar tus deducciones.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Primary CTA */}
             <button onClick={() => setStep(1)} className="gradient-btn" style={{
               width: "100%", color: "#fff", fontWeight: 700, fontSize: 15, border: "none", borderRadius: 12, padding: "14px", cursor: "pointer", marginBottom: 20,
@@ -1246,6 +1278,43 @@ export default function AppScreen() {
                 </div>
               )}
 
+              {/* ── Historial de presentaciones anteriores ── */}
+              {(ctx.siradigPresLoading || ctx.siradigPresentaciones.length > 0) && (
+                <div style={{ ...cardStyle, marginBottom: 16, padding: 0, overflow: "hidden" }}>
+                  <div style={{ padding: "10px 16px", background: "rgba(139,92,246,0.04)", borderBottom: "1px solid rgba(139,92,246,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#5b21b6" }}>📑 Presentaciones anteriores</p>
+                    {ctx.siradigPresLoading && <Spinner size={12} />}
+                  </div>
+                  {ctx.siradigPresentaciones.length > 0 ? (
+                    <div style={{ padding: "8px 16px" }}>
+                      {ctx.siradigPresentaciones.map((pres, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: idx < ctx.siradigPresentaciones.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none" }}>
+                          <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12,
+                            background: /presentad/i.test(pres.estado) ? "rgba(5,150,105,0.1)" : /borrador/i.test(pres.estado) ? "rgba(217,119,6,0.1)" : "rgba(107,114,128,0.1)",
+                            color: /presentad/i.test(pres.estado) ? "#059669" : /borrador/i.test(pres.estado) ? "#d97706" : "#6b7280",
+                          }}>
+                            {/presentad/i.test(pres.estado) ? "✓" : /borrador/i.test(pres.estado) ? "✎" : "—"}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
+                              {pres.periodo || "Sin período"} {pres.tipo && <span style={{ fontSize: 10, fontWeight: 500, color: "#7c3aed" }}>· {pres.tipo}</span>}
+                            </p>
+                            <p style={{ fontSize: 10, color: "#9ca3af" }}>
+                              {pres.estado}{pres.fechaPresentacion ? ` — ${pres.fechaPresentacion}` : ""}
+                              {pres.nroTransaccion ? ` · Nro. ${pres.nroTransaccion}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : ctx.siradigPresLoading ? (
+                    <div style={{ padding: "16px", textAlign: "center" }}>
+                      <span style={{ fontSize: 11, color: "#7c3aed" }}>Buscando presentaciones en SiRADIG...</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               {/* Single borrador card container */}
               <div style={{ ...cardStyle, borderRadius: 16, padding: 0, overflow: "hidden", border: "1.5px solid rgba(139,92,246,0.20)", marginBottom: 20 }}>
 
@@ -1457,7 +1526,11 @@ export default function AppScreen() {
               <div>
                 <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(139,92,246,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(139,92,246,0.04)" }}>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#5b21b6" }}>4 - Retenciones, Percepciones y Pagos a Cuenta</p>
-                  <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Editá abajo ↓</span>
+                  {ctx.retencionesLoading ? (
+                    <span style={{ fontSize: 10, color: "#7c3aed", fontWeight: 500 }}>⏳ Importando de ARCA...</span>
+                  ) : ctx.retencionesFetched && ctx.retenciones.length > 0 ? (
+                    <span style={{ fontSize: 10, color: "#059669", fontWeight: 500 }}>✓ {ctx.retenciones.length} importadas</span>
+                  ) : null}
                 </div>
                 {(() => {
                   const sec4Entries = sectionEntries.filter(([k]) => {
@@ -1499,41 +1572,34 @@ export default function AppScreen() {
                         );
                       })}
 
-                      {/* Manual retenciones entries */}
-                      {retencionesManual.map((r, idx) => (
-                        <div key={idx} style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb" }}>{tiposRetencion.find(t => t.key === r.tipo)?.label || r.tipo}</span>
-                            <button onClick={() => ctx.setRetenciones(prev => prev.filter((_, i) => i !== idx))}
-                              style={{ fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
-                          </div>
-                          <div className="form-row-2">
+                      {/* Imported retenciones from ARCA (read-only) */}
+                      {retencionesManual.map((r, idx) => {
+                        const tipoConfig = tiposRetencion.find(t => t.key === r.tipo);
+                        return (
+                          <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(99,102,241,0.08)" }}>
                             <div style={{ flex: 1 }}>
-                              <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CUIT agente</label>
-                              <input className="input-field" placeholder="30-00000000-0" value={r.cuitAgente || ""}
-                                onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, cuitAgente: e.target.value } : p))}
-                                style={{ fontSize: 12, padding: "6px 10px" }} />
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5" }}>{tipoConfig?.icon} {tipoConfig?.label || r.tipo}</span>
+                              {r.cuitAgente && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 8 }}>{r.cuitAgente}</span>}
                             </div>
-                            <div style={{ flex: 1 }}>
-                              <label style={{ fontSize: 9, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Monto ($)</label>
-                              <input className="input-field" type="number" placeholder="0" value={r.monto || ""}
-                                onChange={e => ctx.setRetenciones(prev => prev.map((p, i) => i === idx ? { ...p, monto: parseFloat(e.target.value) || 0 } : p))}
-                                style={{ fontSize: 12, padding: "6px 10px" }} />
-                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>{fmt(r.monto || 0)}</span>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
 
-                      {/* Add retención buttons — always visible */}
-                      <p style={{ fontSize: 10, color: "#9ca3af", marginBottom: 6, marginTop: retencionesManual.length > 0 ? 8 : 0 }}>Agregar retención / percepción:</p>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {tiposRetencion.map(tipo => (
-                          <button key={tipo.key} onClick={() => ctx.setRetenciones(prev => [...(prev || []), { tipo: tipo.key, cuitAgente: "", monto: 0, periodo: "" }])}
-                            style={{ fontSize: 10, fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "5px 10px", cursor: "pointer" }}>
-                            {tipo.icon} {tipo.label}
-                          </button>
-                        ))}
-                      </div>
+                      {/* Loading state */}
+                      {ctx.retencionesLoading && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0" }}>
+                          <Spinner size={12} />
+                          <span style={{ fontSize: 11, color: "#7c3aed" }}>Buscando retenciones en ARCA...</span>
+                        </div>
+                      )}
+
+                      {/* Show message when no retenciones and not loading */}
+                      {sec4Entries.length === 0 && retencionesManual.length === 0 && !ctx.retencionesLoading && (
+                        <p style={{ fontSize: 11, color: "#9ca3af", fontStyle: "italic", padding: "8px 0" }}>
+                          {ctx.retencionesFetched ? "Sin retenciones/percepciones en ARCA para este período" : "Se importarán automáticamente de ARCA"}
+                        </p>
+                      )}
 
                       {/* Subtotal */}
                       {(sec4Total + retencionesTotal > 0) && (

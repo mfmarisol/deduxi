@@ -331,7 +331,13 @@ const arcaRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(400).send({ ok: false, error: "sessionId inválido" });
     }
 
-    const page = getSession(sessionId, cuit);
+    const mainPage = getSession(sessionId, cuit);
+    if (!mainPage) {
+      return { ok: false, error: "sesion_expirada" };
+    }
+
+    // Use a separate page so it can run in parallel with other scrapers
+    const page = await createExtraPage(sessionId, cuit);
     if (!page) {
       return { ok: false, error: "sesion_expirada" };
     }
@@ -364,6 +370,8 @@ const arcaRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (err) {
       fastify.log.error(err, "arca/fetch-retenciones error");
       return reply.code(500).send({ ok: false, error: safeErrorMessage(err) });
+    } finally {
+      try { await page.close(); } catch {}
     }
   });
 

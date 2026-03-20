@@ -7,3 +7,4 @@ drizzle/
 .DS_Store
 temp-clone/
 .claude/
+.vercel
